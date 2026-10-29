@@ -7,6 +7,9 @@ struct NotesView: View {
   @Shared(.notes) private var notes
   @Shared(.selectedNoteID) private var selectedID
   @Shared(.noteSort) private var sort
+  @Shared(.notesLibrary) private var library
+  @State private var filter = NoteFilter.all
+  @State private var focusMode = false
   @FocusState private var titleFocused: Bool
 
   private var selected: Note? {
@@ -15,8 +18,10 @@ struct NotesView: View {
 
   var body: some View {
     HStack(spacing: 0) {
-      list
-      Divider().overlay(Theme.divider)
+      if !focusMode {
+        list
+        Divider().overlay(Theme.divider)
+      }
       editor
     }
     .onAppear {
@@ -29,6 +34,18 @@ struct NotesView: View {
       HStack(spacing: 4) {
         searchField
         sortMenu
+        Menu {
+          Button("All notes") { filter = .all }
+          Button("Pinned") { filter = .pinned }
+          Button("Trash") { filter = .trash }
+        } label: {
+          Image(systemName: "line.3.horizontal.decrease").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.icon)
+            .frame(width: 36, height: 36).background(Theme.hover, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .help("Filter")
         Button(action: create) {
           Image(systemName: "plus").font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.icon)
             .frame(width: 36, height: 36).background(Theme.hover, in: RoundedRectangle(cornerRadius: 10))
@@ -39,7 +56,8 @@ struct NotesView: View {
         .accessibilityLabel("New Note")
       }
       .padding(.top, 10)
-      let matches = Notes.matching(notes, query: store.query, sort: sort)
+      let visible = NotesOrganization.visible(Array(notes), library: library, filter: filter)
+      let matches = Notes.matching(IdentifiedArray(uniqueElements: visible), query: store.query, sort: sort)
       if notes.isEmpty {
         empty
       } else if matches.isEmpty {
@@ -100,6 +118,8 @@ struct NotesView: View {
     let isSelected = note.id.uuidString == selectedID
     return NoteRow(note: note, isSelected: isSelected, select: { select(note.id) }, delete: { confirmDelete(note) })
       .contextMenu {
+        Button(NotesOrganization.meta(for: note.id, in: library).pinned ? "Unpin" : "Pin") { togglePin(note.id) }
+        Button("Move to Trash") { trash(note.id) }
         Button("Rename") { select(note.id); titleFocused = true }
         if note.sourceURL != nil {
           Button("Remove Page Link") { Notes.update(note.id) { $0.sourceURL = nil; $0.sourceTitle = nil } }
@@ -142,6 +162,7 @@ struct NotesView: View {
             .focused($titleFocused)
             .accessibilityLabel("Note title")
           Spacer(minLength: 0)
+          noteTools(note)
           if let url = note.sourceURL {
             Button {
               window.send(.tab(.open(url), in: window.spaces.selectedID))
@@ -177,7 +198,8 @@ struct NotesView: View {
         }
         .padding(.horizontal, 22)
         .padding(.top, 18)
-        .padding(.bottom, 8)
+        .padding(.bottom, 4)
+        noteMeta(note)
         MarkdownEditor(text: contentBinding(note), onChange: {})
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
@@ -205,6 +227,75 @@ struct NotesView: View {
 
   private func select(_ id: Note.ID) {
     $selectedID.withLock { $0 = id.uuidString }
+  }
+
+  private func noteTools(_ note: Note) -> some View {
+    HStack(spacing: 6) {
+      Menu("Template") {
+        ForEach(library.templates) { template in
+          Button(template.name) { Notes.update(note.id) { $0.content = template.body; if $0.title.isEmpty { $0.title = template.name } } }
+        }
+      }
+      .menuStyle(.borderlessButton)
+      Button("Clip Page") {
+        if let tab = window.spaces.selected.selectedTab {
+          let clip = NoteClip.page(title: tab.displayTitle, url: tab.url, excerpt: nil)
+          Notes.update(note.id) {
+            $0.content = $0.content.isEmpty ? clip : NoteClip.append(tab.displayTitle, source: tab.url, to: $0.content)
+            $0.sourceURL = $0.sourceURL ?? tab.url
+            $0.sourceTitle = $0.sourceTitle ?? tab.displayTitle
+          }
+        }
+      }
+      Button(focusMode ? "Show List" : "Focus") { focusMode.toggle() }
+        .buttonStyle(.plain)
+      Button("Export") { exportAll() }
+        .buttonStyle(.plain)
+    }
+    .font(.system(size: 12))
+  }
+
+  private func noteMeta(_ note: Note) -> some View {
+    let stats = NoteStats.counts(note.content)
+    let links = NoteLinks.backlinks(to: note, notes: Array(notes))
+    let broken = NoteLinks.broken(in: note.content, notes: Array(notes))
+    return VStack(alignment: .leading, spacing: 4) {
+      Text("\(stats.words) words · \(stats.characters) characters · \(stats.minutes) min")
+        .font(.system(size: 11)).foregroundStyle(.secondary)
+      if !links.isEmpty {
+        Text("Backlinks: \(links.map(\.displayTitle).joined(separator: ", "))")
+          .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+      }
+      if !broken.isEmpty {
+        Text("Broken links: \(broken.joined(separator: ", "))")
+          .font(.system(size: 11)).foregroundStyle(.orange).lineLimit(2)
+      }
+    }
+    .padding(.horizontal, 22)
+    .padding(.bottom, 6)
+  }
+
+  private func togglePin(_ id: Note.ID) {
+    $library.withLock { library in
+      var meta = library.meta[id.uuidString] ?? NoteMeta()
+      meta.pinned.toggle()
+      library.meta[id.uuidString] = meta
+    }
+  }
+
+  private func trash(_ id: Note.ID) {
+    $library.withLock { library in
+      var meta = library.meta[id.uuidString] ?? NoteMeta()
+      meta.trashedAt = .now
+      library.meta[id.uuidString] = meta
+    }
+  }
+
+  private func exportAll() {
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = "Notes.md"
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    try? NoteExport.markdown(Array(notes)).write(to: url, atomically: true, encoding: .utf8)
   }
 
   private func create() {

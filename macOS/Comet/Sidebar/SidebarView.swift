@@ -24,6 +24,7 @@ struct SidebarView: View {
   @State private var pickingIconFor: Space.ID?
   @State private var pickedSpaceIcon = ""
   @Shared(.tabReorderingHaptics) private var tabReorderingHaptics
+  @Shared(.tabLayout) private var tabLayout
   @State private var renamingFolder: Folder.ID?
   @Shared(.archive) private var archive
   // A folder just added from the '+' menu, still untitled; Esc on its name takes it away again, as Cancel does.
@@ -564,7 +565,7 @@ struct SidebarView: View {
             send(NSApp.currentEvent?.modifierFlags.contains(.command) == true ? .duplicate(tab.id) : .reload)
           }
         }
-        if tab?.url.isDeveloperPage == true {
+        if tab?.url.showsDeveloperChrome == true {
           ReloadMenu()
         }
       }
@@ -916,6 +917,7 @@ struct SidebarView: View {
     }
     rows(.pinned, depth: 0, isFolded: space.isPinnedCollapsed)
     items += [.divider, .newTab]
+    if TabLayoutMode(rawValue: tabLayout) == .horizontal { return items }
     // A tab group shows where its first tab is, its tabs indented under its header.
     var listed: Set<TabGroup.ID> = []
     for item in space.tabs(in: .unpinned) {
@@ -985,7 +987,12 @@ struct SidebarView: View {
         .transition(.identity)
         .zIndex(2)
     case .divider:
-      divider(space)
+      VStack(alignment: .leading, spacing: 6) {
+        divider(space)
+        if let preview = space.tidyPreview {
+          tidyPreviewCard(preview, in: space)
+        }
+      }
     case .newTab:
       // Lights the row while the command bar is open for a new tab (white at 19% over a dark theme), and pulses
       // its label in a space just created until its first tab.
@@ -1034,6 +1041,42 @@ struct SidebarView: View {
     .frame(height: showsDivider ? 16 : 0)
     .contentShape(Rectangle())
     .zone(.pinnedEnd, $zones)
+  }
+
+  private func tidyPreviewCard(_ preview: TidyPreview, in space: Space) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(preview.isAI ? "Suggested groups" : "Groups from titles and sites")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(Theme.secondaryText)
+      ForEach(preview.groups, id: \.tabIDs) { group in
+        VStack(alignment: .leading, spacing: 2) {
+          Text(group.name).font(.system(size: 12, weight: .semibold))
+          ForEach(group.tabIDs, id: \.self) { id in
+            if let tab = space.tabs[id: id] {
+              Text(tab.displayTitle).font(.system(size: 11)).foregroundStyle(Theme.secondaryText).lineLimit(1)
+            }
+          }
+        }
+      }
+      if !preview.ungrouped.isEmpty {
+        Text("Ungrouped").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.secondaryText)
+        ForEach(preview.ungrouped, id: \.self) { id in
+          if let tab = space.tabs[id: id] {
+            Text(tab.displayTitle).font(.system(size: 11)).foregroundStyle(Theme.secondaryText).lineLimit(1)
+          }
+        }
+      }
+      HStack {
+        Button("Apply") { send(.tidy(.apply)) }
+        Button("Cancel") { send(.tidy(.cancel)) }
+          .foregroundStyle(Theme.secondaryText)
+      }
+      .font(.system(size: 11, weight: .semibold))
+      .buttonStyle(.plain)
+    }
+    .padding(8)
+    .background(Theme.hover, in: RoundedRectangle(cornerRadius: 8))
+    .padding(.horizontal, 8)
   }
 
   private func folderItem(_ folder: Folder, in space: Space) -> some View {
@@ -1819,8 +1862,13 @@ struct SidebarView: View {
     Divider()
     Button("Change Icon…") { iconTab = tab.id }
     Button("Rename…") { rename(tab) }
-    if tab.customTitle != nil || tab.icon != nil {
+    if tab.titleSource != nil {
+      Button("Restore Original Title") { send(.resetNameAndIcon(tab.id)) }
+    } else if tab.customTitle != nil || tab.icon != nil {
       Button("Reset Name and Icon") { send(.resetNameAndIcon(tab.id)) }
+    }
+    if tab.placement == .pinned || tab.placement == .favorite {
+      Button("Tidy Title") { send(.tidyPinnedTitle(tab.id)) }
     }
     // Mutes a tab whether or not it is playing.
     Button(tab.isMuted ? "Unmute" : "Mute") { send(.toggleMute(tab.id)) }
@@ -2421,7 +2469,7 @@ private struct TabRow: View {
     }
     .overlay {
       // The developer outline: 2 pt dashes, 7.5 pt of #FFCE1C then 7.5 pt of #3A3011, just outside the row.
-      if tab.url.isDeveloperPage {
+      if tab.url.showsDeveloperChrome {
         ZStack {
           RoundedRectangle(cornerRadius: 14).strokeBorder(Color(hex: 0x3A3011), lineWidth: 2)
           RoundedRectangle(cornerRadius: 14).strokeBorder(Color(hex: 0xFFCE1C), style: StrokeStyle(lineWidth: 2, dash: [7.5, 7.5]))
@@ -2450,7 +2498,7 @@ private struct TabRow: View {
   private var subtitle: String? {
     if isIconHovered { return "Back to Pinned URL" }
     // Developer mode adds the host.
-    if tab.url.isDeveloperPage { return tab.url.developerSubtitle }
+    if tab.url.showsDeveloperChrome { return tab.url.developerSubtitle }
     return isSelected && tab.pinnedURL != nil ? "Double-click to rename" : nil
   }
 

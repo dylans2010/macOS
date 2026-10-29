@@ -29,6 +29,14 @@ extension Shell {
       ]),
       submenu("File", [
         item("New Tab…", #selector(WindowController.newTab(_:)), "t"),
+        item("New Start Page", #selector(WindowController.newStartPage(_:))),
+        item("Save to Reading Queue", #selector(WindowController.saveToReadingQueue(_:))),
+        item("Save Web App", #selector(WindowController.saveWebApp(_:))),
+        item("Save Local Project", #selector(WindowController.saveLocalProject(_:))),
+        item("Save Session Snapshot", #selector(WindowController.saveSessionSnapshot(_:))),
+        item("Hibernate Tab", #selector(WindowController.hibernateTab(_:))),
+        item("Translate Selection", #selector(WindowController.translateSelection(_:))),
+        item("Fill Password…", #selector(WindowController.fillPassword(_:))),
         item("New Window", #selector(newWindow(_:)), "n", target: self),
         // A new window here always starts blank.
         item("Blank Window", #selector(newWindow(_:)), "n", [.command, .control], target: self),
@@ -37,6 +45,7 @@ extension Shell {
         item("Restore Last Closed Tab", #selector(reopenClosedTab(_:)), "T", target: self),
         .separator(),
         item("Open Command Bar", #selector(WindowController.openLocation(_:)), "l"),
+        hidden(item("Open Instant Link", #selector(WindowController.openInstantLink(_:)), "\r", [.command, .shift])),
         .separator(),
         item("Close Window", #selector(NSWindow.performClose(_:)), "W"),
         item("Archive Tab", #selector(closeTab(_:)), "w", target: self),
@@ -69,6 +78,8 @@ extension Shell {
           item("Find Previous", #selector(WindowController.findPrevious(_:)), "G"),
           item("Use Selection to Find", #selector(WindowController.useSelectionForFind(_:))),
           item("Jump to Selection", #selector(WindowController.jumpToSelection(_:)), "j"),
+          .separator(),
+          item("Ask About This Page", #selector(WindowController.askOnPage(_:)), "a", [.command, .option]),
         ]),
         submenu("Spelling and Grammar", [
           item("Show Spelling and Grammar", #selector(NSText.showGuessPanel(_:)), ":"),
@@ -118,10 +129,13 @@ extension Shell {
         item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
         .separator(),
         submenu("Developer", [
+          item("Developer Mode", #selector(WindowController.toggleDeveloperMode(_:))),
+          item("Developer Tools", #selector(WindowController.showDeveloperTools(_:))),
           item("JavaScript Console", #selector(WindowController.showJavaScriptConsole(_:)), "j", [.command, .option]),
           item("Inspect Elements", #selector(WindowController.inspectElements(_:)), "c", [.command, .option]),
           item("View Source", #selector(WindowController.viewSource(_:)), "u", [.command, .option]),
         ]),
+        item("Agent", #selector(WindowController.showAgent(_:)), "a", [.option, .shift]),
       ]),
       submenu("Spaces", [
         item("New Space…", #selector(WindowController.newSpace(_:))),
@@ -175,6 +189,8 @@ extension Shell {
         item("Expand Current Split", #selector(WindowController.expandCurrentSplit(_:))),
         item("Separate Page from Split View", #selector(WindowController.separatePane(_:))),
         .separator(),
+        item("Organize Today Tabs", #selector(WindowController.tidyTabs(_:))),
+        item("Tidy Pinned Tab Title", #selector(WindowController.tidyPinnedTitle(_:))),
         item("Clear Unpinned Tabs", #selector(WindowController.clearToday(_:)), "K"),
         // Kept in Tabs, under Clear Today.
         item("Reset all tabs in this Space", #selector(WindowController.resetSpaceTabs(_:))),

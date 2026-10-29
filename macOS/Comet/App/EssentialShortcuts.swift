@@ -49,7 +49,8 @@ private struct EssentialShortcuts: View {
       ("Show or Hide Sidebar", "toggleSidebarDocking:"), ("Clear Unpinned Tabs", "clearToday:"),
     ]),
     ("Command Bar and Windows", [
-      ("Open Command Bar", "openLocation:"), ("Add Split View", "newSplit:"),
+      ("Open Command Bar", "openLocation:"), ("Ask About This Page", "askOnPage:"),
+      ("Add Split View", "newSplit:"),
       ("New Little Comet Window", "newLittleComet:"), ("View Library", "toggleLibrary:"), ("Capture", "capture:"),
       ("New Note", "newNote:"),
     ]),

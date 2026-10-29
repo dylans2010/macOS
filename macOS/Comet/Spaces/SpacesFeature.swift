@@ -340,7 +340,7 @@ struct SpacesFeature {
         guard from != to, var target = state.spaces[id: to], let tab = state.spaces[id: from]?.tabs[id: id] else { return .none }
         var copy = Tab(
           id: uuid(), url: tab.url, title: tab.title, placement: placement ?? tab.placement, pinnedURL: tab.pinnedURL,
-          customTitle: tab.customTitle, icon: tab.icon, createdAt: now, lastActiveAt: now, favicon: tab.favicon)
+          customTitle: tab.customTitle, titleSource: tab.titleSource, icon: tab.icon, createdAt: now, lastActiveAt: now, favicon: tab.favicon)
         // A folder tab dropped on the dot lands pinned; a favorite copies into Today; Today tabs keep no pinned URL.
         if placement == nil, case .folder = copy.placement {
           copy.placement = .pinned

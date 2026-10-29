@@ -139,7 +139,12 @@ private struct Pane: View {
         VStack(spacing: 0) {
           bar
           page.frame(maxWidth: .infinity, maxHeight: .infinity).overlay(alignment: .bottomLeading) {
-            if let tab { LinkBubbleOverlay(tab: tab.id, accent: accent) }
+            if let tab {
+              LinkBubbleOverlay(tab: tab.id, accent: accent)
+              LinkPreviewOverlay(tab: tab.id) { url in
+                store.send(.tab(.open(url), in: space.id))
+              }
+            }
           }
         }
       }
@@ -151,7 +156,7 @@ private struct Pane: View {
   }
 
   @ViewBuilder private var bar: some View {
-    if let tab, tab.url.isDeveloperPage {
+    if let tab, tab.url.showsDeveloperChrome {
       DeveloperBar(tab: tab, accent: accent, close: isSplit ? { close() } : nil) { store.send(.editSelectedTab) }
     } else if let tab, isSplit {
       let panes = space.split(of: tab.id)?.tabIDs ?? [tab.id]
@@ -173,7 +178,7 @@ private struct Pane: View {
   }
 
   @ViewBuilder private var page: some View {
-    let hasBar = tab.map { isSplit || $0.url.isDeveloperPage } ?? false
+    let hasBar = tab.map { isSplit || $0.url.showsDeveloperChrome } ?? false
     ZStack {
       if let still {
         Image(nsImage: still).resizable().scaledToFill()
@@ -182,8 +187,14 @@ private struct Pane: View {
             UnevenRoundedRectangle(
               topLeadingRadius: hasBar ? 0 : 6, bottomLeadingRadius: 6, bottomTrailingRadius: 6,
               topTrailingRadius: hasBar ? 0 : 6))
+      } else if let tab, tab.url.isCometStart {
+        StartPageView { url in store.send(.tab(.open(url), in: space.id)) }
+          .clipShape(RoundedRectangle(cornerRadius: 6))
       } else if let tab, let view = Engine.shared.view(tab.id) {
-        WebView(view: view, roundsTop: !hasBar, cornerRadius: 6, onMouseDown: { select() })
+        WebView(view: view, roundsTop: !hasBar, cornerRadius: 6, onMouseDown: {
+          select()
+          AgentActivity.shared.userInteracted(with: tab.id)
+        })
       } else if let tab {
         // A tab a space switch selected gets its page once the strip settles; until then the card names it.
         PagePlaceholder(tab: tab, space: space)

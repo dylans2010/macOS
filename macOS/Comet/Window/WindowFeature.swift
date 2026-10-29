@@ -22,6 +22,7 @@ struct WindowFeature {
     @Presents var find: FindFeature.State?
     // The last query, which the find bar opens with again, as in Chrome.
     var findQuery = ""
+    @Presents var askOnPage: AskOnPageFeature.State?
     @Presents var importer: ImportFeature.State?
     // The Library keeps its pane while closed, so it opens again where it was left. It exists from the
     // start, so even its first opening slides in.
@@ -171,6 +172,9 @@ struct WindowFeature {
     // New Split: the command bar, whose page opens beside the selected tab.
     case newSplit
     case showFind
+    case showAskOnPage
+    case askOnPage(PresentationAction<AskOnPageFeature.Action>)
+    case askInCommandBar
     case showImport
     case showArcImport
     // The profiles an Arc import added, which its undo leaves to the app to remove where no space uses them.
@@ -283,6 +287,7 @@ struct WindowFeature {
         return .merge(
           miniPlayerFollows(&state, shown: shown, selected: selected),
           state.find == nil ? .none : .send(.find(.presented(.close))),
+          state.askOnPage == nil ? .none : .send(.askOnPage(.presented(.close))),
           state.peek == nil ? .none : .send(.dropPeek),
           .cancel(id: ZoomDismissal(window: state.id))
         )
@@ -694,6 +699,19 @@ struct WindowFeature {
         state.find = FindFeature.State(tab: tab.id, query: state.findQuery)
         return state.findQuery.isEmpty ? .none : .send(.find(.presented(.next)))
 
+      case .showAskOnPage:
+        guard let tab = state.spaces.selected.selectedTab, tab.isLive else { return .none }
+        if state.askOnPage?.tab == tab.id { return .none }
+        state.askOnPage = AskOnPageFeature.State(
+          tab: tab.id, url: tab.url, title: tab.displayTitle, isIncognito: state.isIncognito)
+        return .none
+
+      case .askInCommandBar:
+        state.commandBar = state.newCommandBar
+        state.commandBar?.commands = appCommands.available()
+        state.splitBeside = nil
+        return .send(.commandBar(.presented(.queryChanged("ask "))))
+
       case let .useSelectionForFind(text):
         guard state.find != nil else {
           state.findQuery = text
@@ -757,7 +775,7 @@ struct WindowFeature {
         state.isLibraryOpen = false
         return .none
 
-      case .commandBar, .createProfile, .find, .importer, .library, .removeImportedProfiles, .sidebar, .spaces:
+      case .commandBar, .createProfile, .find, .askOnPage, .importer, .library, .removeImportedProfiles, .sidebar, .spaces:
         return .none
       }
     }
@@ -766,6 +784,9 @@ struct WindowFeature {
     }
     .ifLet(\.$find, action: \.find) {
       FindFeature()
+    }
+    .ifLet(\.$askOnPage, action: \.askOnPage) {
+      AskOnPageFeature()
     }
     .ifLet(\.$importer, action: \.importer) {
       ImportFeature()

@@ -7,6 +7,8 @@ struct WindowView: View {
   // The sidebar's width when a drag on its edge began.
   @State private var resizeStart: Double?
   @State private var downloadThrows = DownloadThrows()
+  @State private var agent = AgentActivity.shared
+  @Shared(.tabLayout) private var tabLayout
 
   var body: some View {
     let isFloating = store.sidebar.isFloating
@@ -30,7 +32,8 @@ struct WindowView: View {
             // The bar follows the window's appearance, light on light themes.
             CommandBarView(
               store: commandBar,
-              accent: store.isIncognito ? Theme.accent : Theme.CommandBar.accent(store.spaces.selected.theme)
+              accent: store.isIncognito ? Theme.accent : Theme.CommandBar.accent(store.spaces.selected.theme),
+              availableHeight: max(proxy.size.height - 24, 160)
             ) { store.send(.commandBar(.dismiss)) }
               // The five-row panel centers in the window, 7 pt above the middle: within 2 pt of two
               // measurements, 176 pt from the top of a 696 pt window and 233 of 804.
@@ -162,7 +165,12 @@ struct WindowView: View {
           // Above the page, so a space dot's tooltip reaches over it.
           .zIndex(1)
       }
-      ContentArea(store: store, isThemed: !theme.colors.isEmpty)
+      VStack(spacing: 0) {
+        if TabLayoutMode(rawValue: tabLayout) == .horizontal {
+          HorizontalTabStrip(store: store)
+        }
+        ContentArea(store: store, isThemed: !theme.colors.isEmpty)
+      }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(DownloadThrows.space)) } action: {
           downloadThrows.page = $0
         }
@@ -174,12 +182,34 @@ struct WindowView: View {
           }
         }
         .overlay(alignment: .topTrailing) {
-          if let find = store.scope(state: \.find, action: \.find.presented) {
-            // Shot 51: 10 pt below the developer toolbar, not over it.
-            let space = store.spaces.selected
-            let isUnderToolbar =
-              space.selectedTab.map { $0.url.isDeveloperPage && space.split(of: $0.id) == nil } == true
-            FindBar(store: find).padding(10).padding(.top, isUnderToolbar ? DeveloperBar.height : 0)
+          VStack(alignment: .trailing, spacing: 8) {
+            if let find = store.scope(state: \.find, action: \.find.presented) {
+              // Shot 51: 10 pt below the developer toolbar, not over it.
+              let space = store.spaces.selected
+              let isUnderToolbar =
+                space.selectedTab.map { $0.url.showsDeveloperChrome && space.split(of: $0.id) == nil } == true
+              FindBar(store: find).padding(.top, isUnderToolbar ? DeveloperBar.height : 0)
+            }
+            if let ask = store.scope(state: \.askOnPage, action: \.askOnPage.presented) {
+              AskOnPageView(store: ask)
+            }
+            if agent.isOpen {
+              AgentPanel()
+            }
+          }
+          .padding(10)
+        }
+        .onChange(of: store.spaces.selected.selectedTab?.url) { _, url in
+          if let ask = store.askOnPage, url != ask.url {
+            store.send(.askOnPage(.presented(.close)))
+          }
+          if let tab = store.spaces.selected.selectedTab {
+            AgentActivity.shared.retarget(tab: tab.id, url: tab.url, title: tab.displayTitle)
+          }
+        }
+        .overlay(alignment: .bottomLeading) {
+          if agent.isEngaged {
+            AgentStatusChip().padding(16)
           }
         }
         .padding([.top, .bottom, .trailing], 10)

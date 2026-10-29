@@ -73,7 +73,7 @@ struct Easel: Codable, Equatable, Identifiable, Sendable {
   }
 
   mutating func move(_ id: CanvasObject.ID, by dx: Double, dy: Double) {
-    guard var object = objects[id: id], dx.isFinite, dy.isFinite else { return }
+    guard var object = objects[id: id], !object.locked, dx.isFinite, dy.isFinite else { return }
     object.x += dx
     object.y += dy
     objects[id: id] = object
@@ -105,7 +105,7 @@ struct Easel: Codable, Equatable, Identifiable, Sendable {
 
 struct CanvasObject: Codable, Equatable, Identifiable, Sendable {
   enum CodingKeys: String, CodingKey {
-    case id, kind, x, y, width, height, text, url, title, mediaID, capturedAt, stroke
+    case id, kind, x, y, width, height, text, url, title, mediaID, capturedAt, stroke, fromID, toID, relation, locked, noteID
   }
 
   enum Kind: String, Codable, Sendable {
@@ -114,6 +114,8 @@ struct CanvasObject: Codable, Equatable, Identifiable, Sendable {
     case image
     case capture
     case stroke
+    case connector
+    case note
   }
 
   static let minWidth = 48.0
@@ -134,10 +136,16 @@ struct CanvasObject: Codable, Equatable, Identifiable, Sendable {
   var mediaID: UUID?
   var capturedAt: Date?
   var stroke: Stroke?
+  var fromID: UUID?
+  var toID: UUID?
+  var relation: String
+  var locked: Bool
+  var noteID: UUID?
 
   init(
     id: UUID, kind: Kind, x: Double, y: Double, width: Double, height: Double, text: String = "", url: URL? = nil,
-    title: String = "", mediaID: UUID? = nil, capturedAt: Date? = nil, stroke: Stroke? = nil
+    title: String = "", mediaID: UUID? = nil, capturedAt: Date? = nil, stroke: Stroke? = nil, fromID: UUID? = nil,
+    toID: UUID? = nil, relation: String = "", locked: Bool = false, noteID: UUID? = nil
   ) {
     self.id = id
     self.kind = kind
@@ -151,6 +159,11 @@ struct CanvasObject: Codable, Equatable, Identifiable, Sendable {
     self.mediaID = mediaID
     self.capturedAt = capturedAt
     self.stroke = stroke
+    self.fromID = fromID
+    self.toID = toID
+    self.relation = relation
+    self.locked = locked
+    self.noteID = noteID
   }
 
   init(from decoder: Decoder) throws {
@@ -167,6 +180,11 @@ struct CanvasObject: Codable, Equatable, Identifiable, Sendable {
     mediaID = try container.decodeIfPresent(UUID.self, forKey: .mediaID)
     capturedAt = try container.decodeIfPresent(Date.self, forKey: .capturedAt)
     stroke = try container.decodeIfPresent(Stroke.self, forKey: .stroke)
+    fromID = try container.decodeIfPresent(UUID.self, forKey: .fromID)
+    toID = try container.decodeIfPresent(UUID.self, forKey: .toID)
+    relation = try container.decodeIfPresent(String.self, forKey: .relation) ?? ""
+    locked = try container.decodeIfPresent(Bool.self, forKey: .locked) ?? false
+    noteID = try container.decodeIfPresent(UUID.self, forKey: .noteID)
   }
 
   var frame: CGRect { CGRect(x: x, y: y, width: width, height: height) }
@@ -179,6 +197,8 @@ struct CanvasObject: Codable, Equatable, Identifiable, Sendable {
         case .link: url.map(NoteMarkdown.isSafe) ?? false
         case .image, .capture: mediaID != nil
         case .stroke: stroke.map { $0.points.count > 1 && $0.width > 0 } ?? false
+        case .connector: fromID != nil && toID != nil && fromID != toID
+        case .note: noteID != nil
         }
       }()
   }
@@ -194,6 +214,8 @@ struct CanvasObject: Codable, Equatable, Identifiable, Sendable {
     case .image: return title.isEmpty ? nil : title
     case .capture: return [title, url?.absoluteString].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
     case .stroke: return nil
+    case .connector: return relation.isEmpty ? nil : relation
+    case .note: return title.isEmpty ? nil : title
     }
   }
 

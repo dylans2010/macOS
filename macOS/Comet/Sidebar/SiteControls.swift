@@ -11,6 +11,7 @@ struct SiteControls: View {
   let url: URL
   let open: (URL) -> Void
   @State private var revision = 0
+  @Shared(.developerMode) private var developerMode
 
   var body: some View {
     let _ = revision
@@ -40,9 +41,16 @@ struct SiteControls: View {
       .frame(height: CGFloat(min((actions.count + 1 + 3) / 4, 3)) * 37 - 7)
       .scrollDisabled(actions.count + 1 <= 12)
       header("Settings")
-      // Developer mode follows the page's URL, so its row reports and does not toggle.
-      setting("hammer.fill", "Developer Mode", url.isDeveloperPage ? "On" : "Off", isOn: url.isDeveloperPage)
-        .allowsHitTesting(false)
+      Button {
+        $developerMode.withLock { $0.toggle() }
+        revision += 1
+      } label: {
+        setting(
+          "hammer.fill", "Developer Mode",
+          url.showsDeveloperChrome ? (url.isDeveloperPage && !developerMode ? "On for local pages" : "On") : "Off",
+          isOn: url.showsDeveloperChrome)
+      }
+      .buttonStyle(.plain)
       setting("gearshape.fill", "Automatic Picture-In-Picture", nil, isOn: false).opacity(0.4).allowsHitTesting(false)
         .accessibilityHidden(true)
       ForEach(permissions.keys.sorted(), id: \.self) { key in

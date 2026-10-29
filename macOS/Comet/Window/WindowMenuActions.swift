@@ -255,6 +255,12 @@ extension WindowController: NSMenuItemValidation {
 
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
+    case #selector(toggleDeveloperMode(_:)):
+      @Shared(.developerMode) var enabled
+      item.state = enabled ? .on : .off
+      return true
+    case #selector(showDeveloperTools(_:)), #selector(showAgent(_:)):
+      return space.selectedTab != nil
     case #selector(selectSpace(_:)):
       let spaces = store.isIncognito ? [] : store.spaces.spaces.elements
       item.isHidden = item.tag >= spaces.count
@@ -348,6 +354,17 @@ extension WindowController: NSMenuItemValidation {
       return isShown || Engine.shared.readerable.contains(tab)
     case #selector(useSelectionForFind(_:)):
       return space.selectedTabID.flatMap { Engine.shared.selections[$0] } != nil
+    case #selector(askOnPage(_:)):
+      return space.selectedTab?.isLive == true
+    case #selector(openInstantLink(_:)):
+      return store.commandBar != nil && !(store.commandBar?.query.trimmingCharacters(in: .whitespaces).isEmpty ?? true)
+    case #selector(tidyTabs(_:)):
+      return !space.tidyCandidates.isEmpty
+    case #selector(tidyPinnedTitle(_:)):
+      let tab = space.selectedTab
+      return tab?.placement == .pinned || tab?.placement == .favorite
+    case #selector(askInCommandBar(_:)):
+      return true
     // Enabled for any loaded page, as in Chrome: the page keeps a selection the engine never reported, such as
     // the match the find bar left selected.
     case #selector(jumpToSelection(_:)):

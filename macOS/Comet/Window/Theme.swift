@@ -47,7 +47,7 @@ enum Theme {
   enum CommandBar {
     static let width: CGFloat = 766
     // The panel: 11.85pt continuous.
-    static let radius: CGFloat = 12
+    static let radius: CGFloat = 16
     static let inputHeight: CGFloat = 64
     static let rowHeight: CGFloat = 46
     static let rowSpacing: CGFloat = 4

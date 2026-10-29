@@ -17,6 +17,8 @@ struct Tab: Codable, Equatable, Identifiable {
   var pinnedURL: URL?
   // A name and an icon (an SF Symbol or emoji) the user gave the tab.
   var customTitle: String?
+  // The page title a tidy-label was made from; nil with a customTitle means the user named it.
+  var titleSource: String?
   var icon: String?
   let createdAt: Date
   var lastActiveAt: Date
@@ -34,10 +36,11 @@ struct Tab: Codable, Equatable, Identifiable {
   var groupID: TabGroup.ID?
 
   enum CodingKeys: String, CodingKey {
-    case id, url, title, placement, pinnedURL, customTitle, icon, createdAt, lastActiveAt, groupID
+    case id, url, title, placement, pinnedURL, customTitle, titleSource, icon, createdAt, lastActiveAt, groupID
   }
 
   var displayTitle: String { customTitle ?? title }
+  var hasManualTitle: Bool { customTitle != nil && titleSource == nil }
   // A pinned tab that navigated away from its pinned URL.
   var hasLeftPinnedURL: Bool { pinnedURL.map { $0 != url } ?? false }
   // The page whose favicon stands for the tab: a pinned tab that left its site, as for a sign-in page, keeps its
@@ -181,6 +184,7 @@ struct TabsFeature {
     var isIncognito = false
     // Tidy has just sorted the Today tabs, while its broom sweeps.
     var isTidying = false
+    var tidyPreview: TidyPreview?
     // An SF Symbol name or an emoji; empty shows a dot.
     var icon = ""
     var theme = SpaceTheme()
@@ -369,6 +373,8 @@ struct TabsFeature {
     // Archives Today tabs not shown for the profile's "Archive tabs after".
     case archiveIdle
     case close(Tab.ID)
+    // Unloads a background Today tab. Selecting it loads the same URL again.
+    case hibernate(Tab.ID)
     // Clear (⇧⌘K): archives every Today tab, the shown one too.
     case clearToday
     // Clear Unselected Tabs: archives the Today tabs but the shown ones.
@@ -482,6 +488,8 @@ struct TabsFeature {
     // Archives the group's tabs together.
     case closeGroup(TabGroup.ID)
     case tidy(Tidy)
+    case tidiedTitle(Tab.ID, String, source: String)
+    case tidyPinnedTitle(Tab.ID)
 
     @CasePathable
     enum Delegate {
@@ -585,6 +593,7 @@ struct TabsFeature {
         )
         // The name and icon the user gave it stay.
         reset.customTitle = tab.customTitle
+        reset.titleSource = tab.titleSource
         reset.icon = tab.icon
         state.tabs[id: id] = reset
         // Nothing is left selected.
@@ -592,6 +601,13 @@ struct TabsFeature {
           state.selectedTabID = nil
         }
         return .merge(.run { _ in await engine.discard(id) }, activate(&state))
+
+      case let .hibernate(id):
+        guard let tab = state.tabs[id: id],
+          Hibernation.allowed(live: tab.isLive, unpinned: tab.placement == .unpinned, audible: tab.isAudible, loading: tab.isLoading, split: state.split(of: id) != nil)
+        else { return .none }
+        state.tabs[id: id]?.isLive = false
+        return .run { _ in await engine.close(id) }
 
       case let .cycle(offset):
         let order = state.visibleOrder
@@ -627,6 +643,7 @@ struct TabsFeature {
           pinnedURL: placement == .unpinned ? nil : tab.pinnedURL ?? tab.url, createdAt: now, lastActiveAt: now
         )
         copy.customTitle = tab.customTitle
+        copy.titleSource = tab.titleSource
         copy.icon = tab.icon
         copy.favicon = tab.favicon
         if target == nil {
@@ -747,6 +764,36 @@ struct TabsFeature {
       case .delegate, .tidy:
         return .none
 
+      case let .tidyPinnedTitle(id):
+        guard let tab = state.tabs[id: id], tab.placement == .pinned || tab.placement == .favorite,
+          !tab.hasManualTitle, tab.titleSource == nil || tab.titleSource != tab.title
+        else { return .none }
+        let title = tab.title
+        let host = tab.url.host() ?? ""
+        if let short = TidyTitles.shorten(title, host: host), !TidyTitles.needsModel(title, host: host) {
+          return .send(.tidiedTitle(id, short, source: title))
+        }
+        guard AIFeatureGate.isEnabled(.tidyTabTitles) else {
+          return TidyTitles.shorten(title, host: host).map { .send(.tidiedTitle(id, $0, source: title)) } ?? .none
+        }
+        return .run { send in
+          let fallback = TidyTitles.shorten(title, host: host)
+          do {
+            @Dependency(\.ai) var ai
+            let response = try await ai.complete(TidyTitles.request(title: title, host: host))
+            let label = TidyTitles.sanitize(response.text, original: title, host: host) ?? fallback
+            if let label { await send(.tidiedTitle(id, label, source: title)) }
+          } catch {
+            if let fallback { await send(.tidiedTitle(id, fallback, source: title)) }
+          }
+        }
+
+      case let .tidiedTitle(id, name, source):
+        guard let tab = state.tabs[id: id], !tab.hasManualTitle else { return .none }
+        state.tabs[id: id]?.customTitle = name
+        state.tabs[id: id]?.titleSource = source
+        return .none
+
       case let .open(url):
         let tab = newTab(uuid(), url)
         state.tabs.insert(tab, at: 0)
@@ -794,6 +841,12 @@ struct TabsFeature {
 
       case let .preload(id):
         guard let tab = state.tabs[id: id], !tab.isLive else { return .none }
+        if tab.url.isCometStart {
+          state.tabs[id: id]?.isLive = true
+          state.tabs[id: id]?.isLoading = false
+          state.tabs[id: id]?.title = "Start"
+          return .none
+        }
         state.tabs[id: id]?.isLive = true
         return .run { [profile = state.profileID, incognito = state.isIncognito] _ in
           await engine.create(id, profile, incognito)
@@ -812,6 +865,7 @@ struct TabsFeature {
         guard let tab = state.tabs[id: id] else { return .none }
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         state.tabs[id: id]?.customTitle = name.isEmpty ? nil : name
+        state.tabs[id: id]?.titleSource = nil
         return edited(.renamed(id, from: tab.customTitle), if: state.tabs[id: id]?.customTitle != tab.customTitle)
 
       case let .setPinnedURL(id, url):
@@ -822,6 +876,7 @@ struct TabsFeature {
       case let .resetNameAndIcon(id):
         guard let tab = state.tabs[id: id] else { return .none }
         state.tabs[id: id]?.customTitle = nil
+        state.tabs[id: id]?.titleSource = nil
         state.tabs[id: id]?.icon = nil
         return edited(.reset(id, name: tab.customTitle, icon: tab.icon), if: tab.customTitle != nil || tab.icon != nil)
 
@@ -963,7 +1018,11 @@ struct TabsFeature {
         } else {
           move(id, .unpinned, before: state.tabs(in: .unpinned).first?.id, &state)
         }
-        return moved(from: layout, state)
+        let movedEffect = moved(from: layout, state)
+        if state.tabs[id: id]?.placement == .pinned, AIFeatureGate.isEnabled(.tidyTabTitles) {
+          return .merge(movedEffect, .send(.tidyPinnedTitle(id)))
+        }
+        return movedEffect
 
       case let .restoreLayout(layout):
         restore(layout, &state)
@@ -1199,7 +1258,7 @@ struct TabsFeature {
       case let .tab(tab):
         let duplicate = Tab(
           id: uuid(), url: tab.url, title: tab.title, placement: .folder(copy.id), pinnedURL: tab.pinnedURL,
-          customTitle: tab.customTitle, icon: tab.icon, createdAt: now, lastActiveAt: now)
+          customTitle: tab.customTitle, titleSource: tab.titleSource, icon: tab.icon, createdAt: now, lastActiveAt: now)
         state.tabs.append(duplicate)
         state.place(duplicate.id, before: nil)
       case let .folder(folder):
@@ -1282,8 +1341,12 @@ struct TabsFeature {
     let tabs = unloadedSelection(state)
     for tab in tabs {
       state.tabs[id: tab.id]?.isLive = true
+      if tab.url.isCometStart {
+        state.tabs[id: tab.id]?.isLoading = false
+        state.tabs[id: tab.id]?.title = "Start"
+      }
     }
-    return .merge(tabs.map { tab in
+    return .merge(tabs.filter { !$0.url.isCometStart }.map { tab in
       .run { [profile = state.profileID, incognito = state.isIncognito] _ in
         await engine.create(tab.id, profile, incognito)
         if tab.isMuted {

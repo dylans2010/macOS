@@ -17,6 +17,14 @@ struct CommandBarFeature {
     case command(Command)
     // The calculator row: the expression typed and its result.
     case calculation(String, String)
+    case answer(String, status: AskStatus)
+    case searchInstead(String)
+
+    enum AskStatus: Equatable {
+      case loading
+      case text(String)
+      case error(String)
+    }
 
     // A page from history, which the hover X and ⌘⌥Delete remove.
     var isRemovable: Bool {
@@ -30,6 +38,8 @@ struct CommandBarFeature {
       case let .match(match): "match:\(match.url.absoluteString)"
       case let .command(command): "command:\(command.title)"
       case let .calculation(expression, _): "calculation:\(expression)"
+      case let .answer(question, _): "answer:\(question)"
+      case let .searchInstead(query): "search:\(query)"
       }
     }
   }
@@ -88,6 +98,8 @@ struct CommandBarFeature {
     // The rows shown, computed by refreshSuggestions() when what they come from changes: scanning every tab
     // on each read cost tens of scans per keystroke.
     var suggestions: [Suggestion] = []
+    var askQuestion = ""
+    var askStatus: Suggestion.AskStatus?
     // Little Comet lists its tabs as recent pages, without "Switch to Tab".
     var showsTabsAsRecents = false
     @Shared(.removedSuggestions) var removed
@@ -147,7 +159,7 @@ struct CommandBarFeature {
         switch $0 {
         case let .tab(tab): tab.favicon == nil ? tab.url : nil
         case let .match(match): match.type == .search ? nil : match.url
-        case .command, .calculation: nil
+        case .command, .calculation, .answer, .searchInstead: nil
         }
       }
     }
@@ -168,6 +180,9 @@ struct CommandBarFeature {
     }
 
     private var rows: [Suggestion] {
+      if let question = CommandBarAsk.question(in: query), let status = askStatus, question == askQuestion {
+        return [.answer(question, status: status), .searchInstead(question)]
+      }
       // Chrome can return one search twice, as typed and as suggested; it is listed once.
       var searches = Set<String>()
       let matches = matches.filter { $0.type != .search || searches.insert($0.contents.lowercased()).inserted }
@@ -226,6 +241,8 @@ struct CommandBarFeature {
     case submit(Int)
     // ⌘Enter: the row's page opens in a Little Comet.
     case submitInLittleComet(Int)
+    case instantLink
+    case askDelta(Int, Suggestion.AskStatus)
 
     @CasePathable
     enum Delegate {
@@ -237,7 +254,9 @@ struct CommandBarFeature {
   }
 
   @Dependency(\.autocomplete) var autocomplete
+  @Dependency(\.ai) var ai
   @Dependency(\.dismiss) var dismiss
+  private enum CancelID { case ask }
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -285,6 +304,7 @@ struct CommandBarFeature {
         let favicons = loadFavicons(state)
         guard let index = state.pendingSubmit else { return favicons }
         state.pendingSubmit = nil
+        if index < 0 { return .merge(favicons, .send(.instantLink)) }
         return .merge(favicons, .send(.submit(index)))
 
       case let .moveSelection(offset):
@@ -297,8 +317,17 @@ struct CommandBarFeature {
         guard query != state.query else { return .none }
         state.staleRows = state.suggestions
         state.query = query
+        let ask = CommandBarAsk.question(in: query)
+        if ask != state.askQuestion {
+          state.askQuestion = ask ?? ""
+          state.askStatus = ask == nil ? nil : .loading
+        }
         state.refreshSuggestions()
-        return self.query(&state)
+        let search = self.query(&state)
+        guard let ask, AIFeatureGate.isEnabled(.commandBarAsk) else {
+          return .merge(search, .cancel(id: CancelID.ask))
+        }
+        return .merge(search, self.askQuestion(ask, id: state.queryID))
 
       case let .removeSuggestion(index):
         guard state.suggestions.indices.contains(index), state.suggestions[index].isRemovable,
@@ -313,7 +342,16 @@ struct CommandBarFeature {
         return .none
 
       case let .submit(index):
-        guard state.isActions || state.matchesQuery == state.effectiveQuery else {
+        if let alias = SearchAliases.destination(for: state.query) {
+          return .send(.delegate(.open(alias)))
+        }
+        let waitsForMatches = state.suggestions.indices.contains(index) && {
+          switch state.suggestions[index] {
+          case .match: true
+          default: false
+          }
+        }()
+        guard state.isActions || !waitsForMatches || state.matchesQuery == state.effectiveQuery else {
           state.pendingSubmit = index
           return .none
         }
@@ -337,6 +375,18 @@ struct CommandBarFeature {
             }
             await dismiss()
           }
+        case let .answer(_, status):
+          if case let .text(text) = status {
+            return .run { _ in
+              await MainActor.run {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+              }
+            }
+          }
+          return .none
+        case let .searchInstead(question):
+          return .send(.delegate(.open(Self.searchURL(question))))
         }
 
       case let .submitInLittleComet(index):
@@ -349,9 +399,29 @@ struct CommandBarFeature {
             await autocomplete.select(profile, incognito, match.url)
             await send(.delegate(.openInLittleComet(match.url)))
           }
-        case .command, .calculation:
+        case .command, .calculation, .answer, .searchInstead:
           return .send(.submit(index))
         }
+
+      case .instantLink:
+        guard AIFeatureGate.isEnabled(.instantLinks) else { return .send(.submit(state.selection)) }
+        let query = state.query.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return .none }
+        if state.matchesQuery != state.effectiveQuery {
+          state.pendingSubmit = -1
+          return .none
+        }
+        return .run { [matches = state.matches, profile = state.profile, incognito = state.isIncognito] send in
+          let url = await InstantLinks.destination(query: query, matches: matches, search: Self.searchURL)
+          await autocomplete.select(profile, incognito, url)
+          await send(.delegate(.open(url)))
+        }
+
+      case let .askDelta(id, status):
+        guard id == state.queryID else { return .none }
+        state.askStatus = status
+        state.refreshSuggestions()
+        return .none
       }
     }
   }
@@ -365,6 +435,30 @@ struct CommandBarFeature {
         }
       }
     }
+  }
+
+  private func askQuestion(_ question: String, id: Int) -> Effect<Action> {
+    .run { send in
+      try? await Task.sleep(for: .milliseconds(280))
+      try Task.checkCancellation()
+      var assembled = ""
+      do {
+        for try await delta in ai.stream(CommandBarAsk.request(question)) {
+          assembled += delta
+          await send(.askDelta(id, .text(assembled)))
+        }
+        if assembled.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          await send(.askDelta(id, .error(AIFailure.empty.message)))
+        }
+      } catch let failure as AIFailure {
+        await send(.askDelta(id, .error(failure.message)))
+      } catch is CancellationError {
+        return
+      } catch {
+        await send(.askDelta(id, .error(AIFailure.network(error.localizedDescription).message)))
+      }
+    }
+    .cancellable(id: CancelID.ask, cancelInFlight: true)
   }
 
   private func clear(_ state: inout State) -> Effect<Action> {

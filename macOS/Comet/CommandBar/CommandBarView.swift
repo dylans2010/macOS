@@ -9,6 +9,7 @@ struct CommandBarView: View {
   // Little Comet's panel is narrower, with a close button for the info button.
   var width = Style.width
   var hasCloseButton = false
+  var availableHeight: CGFloat = 720
   let dismiss: () -> Void
   @FocusState private var isFocused: Bool
   @State private var backspaceMonitor: Any?
@@ -16,6 +17,7 @@ struct CommandBarView: View {
   // The panel's frame in the window, top-left origin, for telling a click outside it from one on it.
   @State private var panelFrame = CGRect.zero
   @Environment(\.displayScale) private var displayScale
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   // The chip before the field: Actions, or the site search Tab entered.
   private var mode: String? {
@@ -124,9 +126,18 @@ struct CommandBarView: View {
       .padding(.trailing, 22)
       .frame(height: Style.inputHeight)
 
-      if !store.suggestions.isEmpty {
+      if store.suggestions.isEmpty, !store.query.trimmingCharacters(in: .whitespaces).isEmpty {
+        Text("No suggestions yet")
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(Style.detail)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 22)
+          .padding(.vertical, 14)
+          .accessibilityLabel("No suggestions yet")
+      } else if !store.suggestions.isEmpty {
         Rectangle().fill(Style.separator).frame(height: 1 / displayScale).padding(.horizontal, 12)
-        VStack(spacing: Style.rowSpacing) {
+        ScrollView {
+          VStack(spacing: Style.rowSpacing) {
           ForEach(Array(store.suggestions.enumerated()), id: \.offset) { index, suggestion in
             SuggestionRow(
               suggestion: suggestion, favicon: favicon(suggestion), isSelected: index == store.selection,
@@ -136,8 +147,11 @@ struct CommandBarView: View {
               remove: suggestion.isRemovable ? { store.send(.removeSuggestion(index)) } : nil
             )
             .onTapGesture { store.send(.submit(index)) }
+            .accessibilityAddTraits(index == store.selection ? .isSelected : [])
+          }
           }
         }
+        .frame(maxHeight: max(120, availableHeight - Style.inputHeight - 28))
         .padding(.horizontal, Style.inset)
         .padding(.top, Style.rowsTop)
         .padding(.bottom, Style.rowsBottom)
@@ -150,7 +164,7 @@ struct CommandBarView: View {
       ZStack {
         // Cut out under the panel, so the page shows through it undarkened.
         RoundedRectangle(cornerRadius: Style.radius).fill(.black)
-          .shadow(color: .black.opacity(hasCloseButton ? 0 : Style.shadowOpacity), radius: Style.shadowRadius, y: Style.shadowY)
+          .shadow(color: .black.opacity(hasCloseButton || reduceMotion ? 0 : Style.shadowOpacity), radius: reduceMotion ? 0 : Style.shadowRadius, y: reduceMotion ? 0 : Style.shadowY)
           .mask {
             Rectangle().padding(-4 * Style.shadowRadius)
               .overlay(RoundedRectangle(cornerRadius: Style.radius).blendMode(.destinationOut))
@@ -184,7 +198,11 @@ struct CommandBarView: View {
       // with ⌘⌥ it removes the selected suggestion, and ⌘Return opens the row in a Little Comet.
       backspaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
         if event.keyCode == 36, event.modifierFlags.contains(.command) {
-          store.send(.submitInLittleComet(store.selection))
+          if event.modifierFlags.contains(.shift) {
+            store.send(.instantLink)
+          } else {
+            store.send(.submitInLittleComet(store.selection))
+          }
           return nil
         }
         guard event.keyCode == 51 else { return event }
@@ -243,7 +261,7 @@ struct CommandBarView: View {
     case let .match(match):
       match.type == .search
         ? nil : store.favicons[match.url] ?? store.tabs.first { $0.url.host() == match.url.host() }?.favicon
-    case .command, .calculation: nil
+    case .command, .calculation, .answer, .searchInstead: nil
     }
   }
 }
@@ -366,6 +384,13 @@ private struct SuggestionRow: View {
     case let .command(command): command.title
     case let .match(match): match.type == .search || match.description.isEmpty ? match.contents : match.description
     case let .calculation(expression, result): "\(expression) = \(result)"
+    case let .answer(_, status):
+      switch status {
+      case .loading: "Asking…"
+      case let .text(text): text
+      case let .error(message): message
+      }
+    case .searchInstead: "Search the web instead"
     }
   }
 
@@ -373,7 +398,8 @@ private struct SuggestionRow: View {
     switch suggestion {
     case let .tab(tab): isRecent && !isCurrent ? tab.url.displayString : nil
     case let .match(match): match.type == .search ? nil : match.url.displayString
-    case .command, .calculation: nil
+    case .command, .calculation, .answer: nil
+    case .searchInstead: nil
     }
   }
 }
@@ -413,6 +439,8 @@ extension CommandBarFeature.Suggestion {
   var icon: String {
     if case let .command(command) = self { return command.symbol }
     if case .calculation = self { return "equal.square" }
+    if case .answer = self { return "sparkles" }
+    if case .searchInstead = self { return "magnifyingglass" }
     guard case let .match(match) = self else { return "globe" }
     switch match.type {
     case .search: return "magnifyingglass"
@@ -426,7 +454,7 @@ extension CommandBarFeature.Suggestion {
     switch self {
     case let .tab(tab): tab.url.displayString
     case let .match(match): match.type == .search ? match.contents : match.url.displayString
-    case .command, .calculation: nil
+    case .command, .calculation, .answer, .searchInstead: nil
     }
   }
 }

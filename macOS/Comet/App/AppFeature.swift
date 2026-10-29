@@ -199,13 +199,16 @@ struct AppFeature {
         return .send(.windows(.element(id: window, action: .showToast("Download name reverted!"))))
 
       case let .engine(.updated(tab, page)):
+        let styles = Effect<Action>.run { _ in
+          await MainActor.run { StyleEngine.apply(tab: tab, url: page.url, loading: page.isLoading) }
+        }
         if let littleComet = state.littleComets.first(where: { $0.tab?.id == tab }) {
-          return .send(.littleComets(.element(id: littleComet.id, action: .pageUpdated(page))))
+          return .merge(styles, .send(.littleComets(.element(id: littleComet.id, action: .pageUpdated(page)))))
         }
         if let window = state.windows.first(where: { $0.peek?.tab.id == tab }) {
-          return .send(.windows(.element(id: window.id, action: .peekUpdated(page))))
+          return .merge(styles, .send(.windows(.element(id: window.id, action: .peekUpdated(page)))))
         }
-        return send(.pageUpdated(tab, page), toSpaceOf: tab, in: state)
+        return .merge(styles, send(.pageUpdated(tab, page), toSpaceOf: tab, in: state))
 
       case let .engine(.newWindowRequested(tab, url, background)):
         if state.littleComets.contains(where: { $0.tab?.id == tab }) {

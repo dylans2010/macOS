@@ -158,14 +158,30 @@ extension DependencyValues {
 private enum TidyDownloadKey: DependencyKey {
   // Renames the finished file to its tidier name, if it has one, and returns where it went.
   static let liveValue: @Sendable (URL, String?) async throws -> URL? = { file, site in
+    let original = file.lastPathComponent
     let title =
       file.pathExtension.lowercased() == "pdf"
       ? PDFDocument(url: file)?.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String : nil
-    guard let name = DownloadName.tidy(file.lastPathComponent, site: site, title: title) else { return nil }
+    var name = DownloadName.tidy(original, site: site, title: title)
+    let usesAI = await MainActor.run { AIFeatureGate.isEnabled(.tidyDownloads) }
+    if usesAI {
+      do {
+        let response = try await AIRuntime.shared.complete(
+          DownloadAI.request(name: original, site: site, title: title, mime: nil))
+        if let proposed = DownloadAI.sanitize(response.text, original: original) {
+          name = proposed
+        }
+      } catch {
+        // The on-device tidy, if any, still applies.
+      }
+    }
+    guard let name else { return nil }
     let folder = file.deletingLastPathComponent()
+    guard folder.path == file.deletingLastPathComponent().path, !name.contains("/") else { return nil }
     let renamed = folder.appending(path: DownloadName.unique(name) {
       FileManager.default.fileExists(atPath: folder.appending(path: $0).path)
     })
+    guard renamed.deletingLastPathComponent() == folder else { return nil }
     try FileManager.default.moveItem(at: file, to: renamed)
     return renamed
   }

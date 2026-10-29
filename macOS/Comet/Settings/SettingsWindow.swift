@@ -4,7 +4,7 @@ import SwiftUI
 
 // The Settings window's panes in tab order; a pane's raw value is its tab index and the tag that opens it.
 enum SettingsPane: Int, CaseIterable {
-  case general, profiles, links, shortcuts, icon, advanced
+  case general, profiles, links, shortcuts, icon, advanced, ai, styles, startPage, privacy, sync, browsing, tools, passwords
 }
 
 // The Settings window: a toolbar tab per pane, titled after the selected one, at a fixed size.
@@ -24,6 +24,26 @@ func makeSettingsWindow(
     case .shortcuts: ("Shortcuts", symbol("keyboard"), AnyView(ShortcutsPane()))
     case .icon: ("Icon", appIconTabImage(), AnyView(IconPane()))
     case .advanced: ("Advanced", symbol("slider.horizontal.3"), AnyView(AdvancedPane(store: store, openPage: openPage)))
+    case .ai: ("AI Features", symbol("sparkles"), AnyView(AIPane()))
+    case .styles: ("Styles", symbol("paintbrush"), AnyView(StylesPane()))
+    case .startPage: ("Start Page", symbol("square.grid.2x2"), AnyView(StartPageEditor()))
+    case .privacy:
+      ("Privacy", symbol("hand.raised"), AnyView(PrivacyPane { url in
+        let profile = store.withState {
+          $0.windows.last { !$0.isIncognito }?.spaces.selected.profileID ?? $0.profiles.ids.first ?? UUID()
+        }
+        openPage(url, profile)
+      }))
+    case .sync: ("Sync", symbol("arrow.triangle.2.circlepath"), AnyView(SyncPane()))
+    case .browsing: ("Tabs", symbol("rectangle.split.3x1"), AnyView(TabLayoutPane()))
+    case .tools:
+      ("Tools", symbol("square.grid.2x2"), AnyView(ProductivityPane { url in
+        let profile = store.withState {
+          $0.windows.last { !$0.isIncognito }?.spaces.selected.profileID ?? $0.profiles.ids.first ?? UUID()
+        }
+        openPage(url, profile)
+      }))
+    case .passwords: ("Passwords", symbol("key"), AnyView(PasswordsPane()))
     }
   }
   for (label, image, pane) in panes {

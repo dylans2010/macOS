@@ -2,6 +2,14 @@ import ComposableArchitecture
 import EngineCore
 import SwiftUI
 
+enum ExtensionCompatibility {
+  static let summary = """
+    Comet runs Chrome’s extension system: installs from the Chrome Web Store, Manifest V3 service workers, content scripts, and toolbar actions. \
+    Permissions and site access are the ones Chrome shows on the extension’s page. Side panels and some window APIs are not available. \
+    A listing in the store is not a promise that every API the extension uses is implemented. Built-in extensions, including the ad blocker, stay under Settings.
+    """
+}
+
 struct ExtensionsView: View {
   let context: ECBrowserContext
   // Opens Chrome's page for one extension, with its details, site access and incognito setting.
@@ -21,7 +29,10 @@ struct ExtensionsView: View {
           Image(nsImage: item.icon ?? NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: nil)!)
             .resizable()
             .frame(width: 20, height: 20)
-          Text(item.name).lineLimit(1)
+          VStack(alignment: .leading, spacing: 1) {
+            Text(item.name).lineLimit(1)
+            Text(item.identifier).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+          }
           Spacer()
           if item.isBuiltIn {
             Text("Built in; turn it off in Settings").foregroundStyle(.secondary)
@@ -34,7 +45,13 @@ struct ExtensionsView: View {
           }
         }
       }
+      Text(ExtensionCompatibility.summary)
+        .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
       HStack {
+        Button("Chrome Web Store") {
+          done()
+          NSApp.sendAction(#selector(WindowController.addExtension(_:)), to: nil, from: nil)
+        }
         Spacer()
         Button("Done", action: done).keyboardShortcut(.defaultAction)
       }

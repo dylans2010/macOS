@@ -61,6 +61,7 @@ struct EaselCanvas: View {
           Theme.fill.opacity(0.35)
           CanvasEventCatcher(onScroll: { pan(by: $0) }, onMagnify: { zoom(by: $0, around: nil) })
           canvasLayer(transform)
+          connectorLayer(transform)
           objectsLayer(transform)
           if liveStroke.count > 1 {
             liveStrokePath(transform)
@@ -206,10 +207,30 @@ struct EaselCanvas: View {
     .allowsHitTesting(false)
   }
 
+  private func connectorLayer(_ transform: Transform) -> some View {
+    Canvas { context, _ in
+      for object in current.objects where object.kind == .connector {
+        guard let from = object.fromID.flatMap({ current.objects[id: $0] }),
+          let to = object.toID.flatMap({ current.objects[id: $0] })
+        else { continue }
+        var path = Path()
+        let start = transform.toScreen(CGPoint(x: from.x + from.width / 2, y: from.y + from.height / 2))
+        let end = transform.toScreen(CGPoint(x: to.x + to.width / 2, y: to.y + to.height / 2))
+        path.move(to: start)
+        path.addLine(to: end)
+        context.stroke(path, with: .color(Theme.accent), lineWidth: 1.5)
+        if !object.relation.isEmpty {
+          context.draw(Text(object.relation).font(.system(size: 11)), at: CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2))
+        }
+      }
+    }
+    .allowsHitTesting(false)
+  }
+
   private func objectsLayer(_ transform: Transform) -> some View {
     let visible = transform.visibleRect.insetBy(dx: -80, dy: -80)
     return ForEach(current.objects) { object in
-      if object.kind != .stroke, object.frame.intersects(visible) {
+      if object.kind != .stroke, object.kind != .connector, object.frame.intersects(visible) {
         objectView(object, transform: transform)
           .frame(width: object.width * transform.zoom, height: object.height * transform.zoom)
           .position(transform.toScreen(CGPoint(x: object.x + object.width / 2, y: object.y + object.height / 2)))
@@ -240,8 +261,17 @@ struct EaselCanvas: View {
       LinkCard(object: object, profile: space.profileID, open: { object.url.map { open($0, false) } })
     case .image, .capture:
       MediaCard(object: object, image: object.mediaID.flatMap { images[$0] }, open: { object.url.map { open($0, false) } })
-    case .stroke:
+    case .stroke, .connector:
       EmptyView()
+    case .note:
+      VStack(alignment: .leading, spacing: 4) {
+        Label(object.title.isEmpty ? "Note" : object.title, systemImage: "note.text")
+          .font(.system(size: 13, weight: .semibold))
+        Text(object.text).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(4)
+      }
+      .padding(8)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .background(Theme.fill, in: RoundedRectangle(cornerRadius: 8))
     }
   }
 
@@ -274,6 +304,12 @@ struct EaselCanvas: View {
     }
   }
 
+  private func addTemplate(_ name: String) {
+    Easels.update(easel.id) { board in
+      for object in EaselTemplates.named(name) where object.isValid { board.add(object) }
+    }
+  }
+
   private func canvasMenu(_ transform: Transform) -> some View {
     Group {
       Button("Paste") { paste(at: nil) }
@@ -282,10 +318,18 @@ struct EaselCanvas: View {
       Button("Add Link…") { addLink(at: nil) }
       Button("Add Image…") { pickImages() }
       Button("Capture Page") { capturePage() }
+      Menu("Template") {
+        Button("Website research") { addTemplate("Website research") }
+        Button("Comparison") { addTemplate("Comparison") }
+        Button("Brainstorm") { addTemplate("Brainstorm") }
+      }
       if let id = selection, let object = current.objects[id: id] {
         Divider()
         if let url = object.url {
           Button("Open Source Page") { open(url, false) }
+        }
+        Button(object.locked ? "Unlock" : "Lock") {
+          Easels.update(easel.id) { $0.objects[id: id]?.locked.toggle() }
         }
         Button("Delete") { delete([id]) }
       }
