@@ -137,6 +137,11 @@ struct DeveloperToolsView: View {
   }
 
   private func json(_ text: String) -> String {
-    (try? String(data: JSONSerialization.data(withJSONObject: text), encoding: .utf8)) ?? "\"\""
+    guard let data = try? JSONSerialization.data(withJSONObject: [text]),
+      var encoded = String(data: data, encoding: .utf8), encoded.count >= 2
+    else { return "\"\"" }
+    encoded.removeFirst()
+    encoded.removeLast()
+    return encoded
   }
 }

@@ -89,7 +89,13 @@ enum StyleMatch {
   }
 
   private static func json(_ text: String) -> String {
-    (try? String(data: JSONSerialization.data(withJSONObject: text), encoding: .utf8)) ?? "\"\""
+    // A bare string is not a valid top-level JSON object and raises NSInvalidArgumentException.
+    guard let data = try? JSONSerialization.data(withJSONObject: [text]),
+      var encoded = String(data: data, encoding: .utf8), encoded.count >= 2
+    else { return "\"\"" }
+    encoded.removeFirst()
+    encoded.removeLast()
+    return encoded
   }
 }
 
