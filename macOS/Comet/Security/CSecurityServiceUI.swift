@@ -34,9 +34,9 @@ struct CSecurityServiceUI: View {
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 14) {
+      VStack(alignment: .leading, spacing: 10) {
         Text("Security").font(.system(size: 13, weight: .semibold))
-        Text("Your passwords are encrypted on this Mac with a key kept in the Keychain. They are not synced, uploaded, or sent to any service. If the Keychain item is deleted, the vault cannot be recovered — there is no master password to reset it with.")
+        Text("Encrypted on this Mac with a Keychain key. Not synced or uploaded. If the Keychain item is deleted, the vault cannot be recovered — there is no master password.")
           .font(.system(size: 12)).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
         if !service.isVaultReady {
@@ -55,7 +55,7 @@ struct CSecurityServiceUI: View {
         }
         if showOtherProviders { otherProviders }
       }
-      .padding(24)
+      .padding(16)
       .frame(maxWidth: .infinity, alignment: .leading)
     }
     .onAppear(perform: refresh)
@@ -108,6 +108,7 @@ struct CSecurityServiceUI: View {
       HStack {
         Button("Add Login") { editor = EditorDraft() }
         Button("Import CSV…", action: chooseCSV)
+        Button("Fill on This Page", action: fillOnThisPage)
         Button("Lock Security") {
           service.lock()
           credentials = []
@@ -139,7 +140,7 @@ struct CSecurityServiceUI: View {
         .pickerStyle(.segmented)
         .frame(width: 180)
       }
-      Text("Authentication is checked again before any password is shown or filled, and a session lasts \(Int(service.lockTimeout / 60)) minutes. The list itself shows only website names and usernames.")
+      Text("Authentication is checked again before any password is shown or filled; a session lasts \(Int(service.lockTimeout / 60)) minutes. The list shows only sites and usernames.")
         .font(.system(size: 12)).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -161,6 +162,8 @@ struct CSecurityServiceUI: View {
 
   private var credentialList: some View {
     VStack(alignment: .leading, spacing: 8) {
+      Text("\(filtered.count) login\(filtered.count == 1 ? "" : "s")")
+        .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
       if filtered.isEmpty {
         Text(credentials.isEmpty
           ? "No logins saved in Security yet. Add one, import a CSV, or save a login from a website and confirm the prompt."
@@ -175,9 +178,6 @@ struct CSecurityServiceUI: View {
             Text(credential.username).font(.system(size: 12)).foregroundStyle(.secondary)
             if let lastUsed = credential.lastUsed {
               Text("Last used \(lastUsed.formatted(date: .abbreviated, time: .shortened))")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
-            } else {
-              Text("Modified \(credential.modified.formatted(date: .abbreviated, time: .shortened))")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
             }
           }

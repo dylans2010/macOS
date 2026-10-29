@@ -118,6 +118,12 @@ final class CSecurityService {
   private var session = AuthSession(authenticatedAt: nil, timeout: 300)
   private(set) var isVaultReady = false
   private(set) var vaultError: CSecurityVault.Error?
+  /// Metadata cache: the list and picker show origins/usernames, never
+  /// passwords, and they are asked for far more often than the vault
+  /// changes. Serving them from here avoids a vault round-trip per
+  /// read; every write goes through `persist(_:)`, which clears it,
+  /// and Lock clears it too, so a stale list cannot survive a change.
+  private var metadataCache: [CSecurityCredential.Metadata]?
 
   init(vault: CSecurityVault.Store = CSecurityVault.Store()) {
     self.vault = vault
@@ -135,8 +141,13 @@ final class CSecurityService {
   /// Loads (or first-creates) the vault. Must be called before any
   /// credential operation; the UI calls it on appear and surfaces
   /// `vaultError` instead of showing an empty list for a damaged vault.
+  /// When the vault is already ready this is a no-op: the vault's own
+  /// in-memory cache serves it, so repeated prepares (for example on
+  /// every login page) do not re-read the encrypted file from disk.
   func prepare() {
+    guard !isVaultReady else { return }
     session.timeout = lockTimeout
+    metadataCache = nil
     do {
       _ = try vault.load()
       isVaultReady = true
@@ -158,6 +169,7 @@ final class CSecurityService {
   func lock() {
     session = AuthSession(authenticatedAt: nil, timeout: lockTimeout)
     vault.lockVault()
+    metadataCache = nil
     isVaultReady = false
   }
 
@@ -207,7 +219,10 @@ final class CSecurityService {
 
   func metadata() throws -> [CSecurityCredential.Metadata] {
     guard isVaultReady else { throw ServiceError.vaultNotReady }
-    return try vault.credentials().map(\.metadata).sorted { $0.origin < $1.origin }
+    if let metadataCache { return metadataCache }
+    let all = try vault.credentials().map(\.metadata).sorted { $0.origin < $1.origin }
+    metadataCache = all
+    return all
   }
 
   func metadata(forOrigin origin: String) throws -> [CSecurityCredential.Metadata] {
@@ -236,6 +251,7 @@ final class CSecurityService {
       let password = all[index].password
       all[index].lastUsed = Date()
       try vault.save(all)
+      metadataCache = nil
       return .success(password)
     } catch {
       return .failure(.persistenceFailed)
@@ -299,6 +315,9 @@ final class CSecurityService {
     } catch {
       throw ServiceError.persistenceFailed
     }
+    // The list changed, so the next metadata read rebuilds the cache
+    // instead of showing the pre-write list.
+    metadataCache = nil
   }
 
   // MARK: - CSV import (transactional)

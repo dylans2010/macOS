@@ -15,12 +15,54 @@ enum AgentTools {
       """
   }
 
+  /// Readable text inside a user-dragged rectangle, in CSS viewport
+  /// pixels. Elements whose bounding box intersects the rectangle
+  /// contribute their text, in document order, capped so one huge
+  /// selection cannot flood the transcript. Values are never read:
+  /// only visible text nodes are collected.
+  @MainActor
+  static func regionText(tab: Tab.ID, rect: CGRect) async -> String {
+    let script = regionScript(x: rect.origin.x, y: rect.origin.y, width: rect.width, height: rect.height)
+    let raw = await runScript(script, tab: tab) ?? ""
+    guard let data = raw.data(using: .utf8),
+      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let text = json["text"] as? String
+    else { return "" }
+    return String(text.prefix(4_000))
+  }
+
+  static func regionScript(x: Double, y: Double, width: Double, height: Double) -> String {
+    """
+    (() => {
+      const rx = \(x), ry = \(y), rw = \(width), rh = \(height);
+      const overlaps = (r) => r.width > 0 && r.height > 0 && r.left < rx + rw && r.right > rx && r.top < ry + rh && r.bottom > ry;
+      const parts = [];
+      for (const node of document.querySelectorAll("p, h1, h2, h3, h4, li, td, th, blockquote, a, button, label, figcaption")) {
+        try {
+          const r = node.getBoundingClientRect();
+          if (!overlaps(r)) continue;
+          const text = (node.innerText || "").trim();
+          if (text) parts.push(text.slice(0, 500));
+        } catch (e) {}
+      }
+      return JSON.stringify({text: parts.slice(0, 60).join("\\n")});
+    })()
+    """
+  }
+
   @MainActor
   static func run(_ call: AgentCall, tab: Tab.ID) async -> String {
     let activity = AgentActivity.shared
     guard activity.tab == tab, !activity.phaseIsBlocked else { return "Not run. Agent is paused, stopped, or aimed at another tab." }
     guard let contents = Engine.shared.tabs[tab] else { return "This tab has no page loaded." }
     switch call.name {
+    case "get_region_text":
+      guard let region = activity.selectedRegion else {
+        return "No area is selected. Ask the user to drag a square over the page with Select area, then try again."
+      }
+      return region.text.isEmpty
+        ? "The selected area has no readable text."
+        : "Selected area \(region.summary):\n\(region.text)"
     case "get_current_page":
       return "title=\(contents.title) url=\(contents.url?.absoluteString ?? "")"
     case "get_page_text":

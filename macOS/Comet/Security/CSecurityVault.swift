@@ -233,8 +233,16 @@ enum CSecurityVault {
     /// .vaultCorrupted and is left on disk untouched; the previous good
     /// copy is tried first and, if it decrypts, becomes the vault.
     /// Callers must surface that recovery to the user, not hide it.
+    ///
+    /// Cache: once loaded, the credentials already live in memory
+    /// (`_credentials`), so a second load returns them without touching
+    /// the disk or the Keychain at all. Only Lock purges them, so the
+    /// next load after a lock re-reads the file. A failed load leaves
+    /// `_loaded` false, so a retry still re-reads the disk instead of
+    /// serving a stale or empty cache.
     @discardableResult
     func load() throws -> [CSecurityCredential] {
+      if isLoaded { return locked { _credentials } }
       let key: SymmetricKey
       if let existing = try keyStore.loadKey() {
         key = SymmetricKey(data: existing)

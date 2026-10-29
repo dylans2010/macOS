@@ -262,3 +262,60 @@ policy constants; nothing in it was weakened.
   React/Vue native-setter issue in the fill script, are pre-existing
   macOS-path limitations from the earlier audit and are unchanged by
   this work (Security's fill uses the same `PasswordFillScript`).
+
+## 11. 2026-10-28 follow-up: why the popup did not show, and what changed
+
+Why it did not show (three separate causes, all in the old code):
+
+1. Fill had no automatic popup at all. The picker only ran from
+   Fill Password (menu) or Fill on This Page (Settings). On the page
+   itself, the only overlay was the macOS AutoFill host — a different
+   store. A Security login therefore never surfaced when a password
+   field appeared, even though Security held it.
+2. Save silently dropped a login when the vault was not ready.
+   `CSecuritySaveIntegration.poll` took (and cleared) the pending
+   submission, then `presentSaveAlert` returned without any UI when
+   `isVaultReady` was false (vault locked after launch, or after
+   Lock). No alert, no retry, and the submission was already gone.
+   A second bug compounded it: `installedFor` was a single String,
+   so two monitored tabs overwrote each other's install key and
+   neither ever reached `takePending`.
+3. Save only listened for a form `submit` event. Logins that use a
+   button click + fetch, or a single-page-app transition, never
+   fired it, so no pending value was ever captured.
+
+What changed in this follow-up (same files, no new store):
+
+- `CSecurityFillSuggestion.offerIfNeeded` (BrowserIntegration):
+  when the password field is focused and Security holds a match for
+  that origin, the Security picker is offered once per tab + origin.
+  No match means no popup and the macOS path is untouched; a
+  cancelled picker is not re-offered on the same page.
+- Save poll now prepares the vault *before* taking the pending
+  value, so a locked vault leaves the submission in place for the
+  next poll, and `presentSaveAlert` shows a "Security could not be
+  opened" alert instead of returning silently if the vault is still
+  not ready. `installedFor` is now a per-tab+origin set.
+- The save listener now also captures on a submit-button click,
+  at that user action only. The probe still never reads field
+  values by polling.
+- Cache: `CSecurityVault.Store.load()` returns the in-memory
+  credentials once loaded, without re-reading the disk or Keychain
+  (Lock purges it; a failed load leaves it unloaded, so retries
+  still re-read). `CSecurityService.prepare()` is a no-op when
+  already ready, and `metadata()` is cached and cleared by every
+  write path and by Lock. Plaintext passwords are still only held
+  in the vault's existing in-memory store; no new copy is kept.
+- Settings view is cleaner: shorter header text, one "Fill on This
+  Page" button in the vault controls, a login count, and rows that
+  show last-used only (no second modified-date line).
+
+Superseded limitations from §10: the "no auto-popup" and "submit
+event only" limitations above are now fixed for the main-frame,
+focused-field and click cases. Cross-origin frames, a document
+destroyed before the next poll, no master password, and no sync
+remain as stated in §10. Still unverified on a Mac (same list as
+§9, plus): focus a login page with a saved Security login and
+confirm the picker appears once; submit a fetch-based login and
+confirm the save prompt appears; lock Security, submit a login,
+unlock, and confirm the prompt is not lost.

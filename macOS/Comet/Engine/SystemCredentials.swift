@@ -539,6 +539,15 @@ final class PasswordFieldMonitor {
       let raw = await probe(tab)
       if let target = PasswordFieldGeometry.parse(raw) {
         PasswordAutoFillHost.shared.update(tab: tab, url: page, target: target)
+        // Security's own fill popup: when the password field is
+        // focused and Security already holds a login for this origin,
+        // offer it here instead of only behind the Fill Password
+        // menu item. Without this, a saved Security login never
+        // surfaced on the page itself. Once per tab + origin, and
+        // a no-match page is left to the macOS overlay above.
+        if target.kind == "password" {
+          await CSecurityFillSuggestion.offerIfNeeded(tab: tab, url: page, kind: target.kind)
+        }
       } else {
         PasswordAutoFillHost.shared.dismiss(tab: tab)
       }

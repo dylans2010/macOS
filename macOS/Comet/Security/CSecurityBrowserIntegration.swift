@@ -42,9 +42,8 @@ enum CSecuritySaveScript {
       if (globalThis.__cometSecuritySaveInstalled) return "installed";
       globalThis.__cometSecuritySaveInstalled = true;
       globalThis.__cometSecurityPending = null;
-      document.addEventListener("submit", (event) => {
+      const capture = (form) => {
         try {
-          const form = event.target && event.target.tagName === "FORM" ? event.target : null;
           if (!form) return;
           const pass = form.querySelector('input[type="password"]');
           if (!pass || !pass.value) return;
@@ -54,6 +53,25 @@ enum CSecuritySaveScript {
             password: pass.value
           });
         } catch (e) {}
+      };
+      document.addEventListener("submit", (event) => {
+        const form = event.target && event.target.tagName === "FORM" ? event.target : null;
+        capture(form);
+      }, true);
+      // Many sites never fire a form submit: they log in with a button
+      // click + fetch, or a single-page-app transition. Capturing on
+      // a submit-button click covers those logins too. The values are
+      // only captured at a user action (submit or click), never by
+      // polling field values, so the probe's no-value-reading rule
+      // is unchanged. A login that then fails validation may still
+      // prompt; choosing Not Now saves nothing.
+      document.addEventListener("click", (event) => {
+        const target = event.target && event.target.closest
+          ? event.target.closest('button, input[type="submit"], input[type="image"]')
+          : null;
+        if (!target) return;
+        const form = target.form || (target.closest ? target.closest("form") : null);
+        capture(form);
       }, true);
       return "installed";
     })()
@@ -87,7 +105,11 @@ enum CSecuritySaveScript {
 // is untouched and this path can be reasoned about (and tested) alone.
 @MainActor
 enum CSecuritySaveIntegration {
-  private static var installedFor: String?
+  /// One install key per tab + origin. This used to be a single
+  /// String, so two monitored tabs took turns overwriting it: each
+  /// poll re-installed and returned early, and neither tab ever
+  /// reached takePending. A set fixes that without a second loop.
+  private static var installedFor: Set<String> = []
 
   /// Installs the listener for this tab/origin (once per origin change)
   /// and, if a submission is pending, offers the native save alert.
@@ -98,9 +120,18 @@ enum CSecuritySaveIntegration {
       let origin = CredentialPage.origin(pageURL),
       let contents = Engine.shared.tabs[tab]
     else { return }
+    // Prepare BEFORE taking the pending submission. The old order
+    // took (and cleared) the pending value first, then
+    // presentSaveAlert returned silently when the vault was not ready
+    // — a locked vault therefore lost the login with no UI at all.
+    // Now a not-ready vault leaves the pending value in place for
+    // the next poll, after the user unlocks Security.
+    let service = CSecurityService.shared
+    if !service.isVaultReady { service.prepare() }
+    guard service.isVaultReady else { return }
     let installKey = tab.uuidString + "|" + origin
-    if installedFor != installKey {
-      installedFor = installKey
+    if !installedFor.contains(installKey) {
+      installedFor.insert(installKey)
       contents.evaluateJavaScript(CSecuritySaveScript.install) { _ in }
       return
     }
@@ -132,7 +163,18 @@ enum CSecuritySaveIntegration {
   /// username are shown; the password is never displayed in the alert.
   static func presentSaveAlert(pageURL: URL, credential: CSecurityCredential) {
     let service = CSecurityService.shared
-    guard service.isVaultReady else { return }
+    if !service.isVaultReady { service.prepare() }
+    guard service.isVaultReady else {
+      // Second line of defence for a vault that locked between the
+      // poll and the alert: say so, instead of silently dropping
+      // the save the user just submitted.
+      let locked = NSAlert()
+      locked.messageText = "Security could not be opened"
+      locked.informativeText = "Open Settings → Passwords and Autofill and tap Unlock Security, then submit the login again. Nothing was saved."
+      locked.addButton(withTitle: "OK")
+      locked.runModal()
+      return
+    }
     // An existing credential for this origin + username is not replaced
     // silently: the alert below is the explicit confirmation, and only
     // a Save choice reaches saveSubmitted, which then replaces it.
@@ -153,6 +195,40 @@ enum CSecuritySaveIntegration {
       failure.informativeText = "The vault could not be written. Nothing was saved."
       failure.runModal()
     }
+  }
+}
+
+// Automatic fill offer, driven from PasswordFieldMonitor.watch.
+//
+// Until now the fill picker only appeared when the user already knew
+// to run Fill Password (menu) or Fill on This Page (Settings). A login
+// page with a focused password field showed only the macOS AutoFill
+// overlay — a different store — so a Security login the user already
+// had never surfaced, and it looked like "the popup does not show".
+// This offer runs when the password field is actually focused
+// (probe kind "password"), once per tab + origin, and only when
+// Security holds a match for that origin. If Security holds nothing,
+// it does nothing and the macOS path is untouched. A cancelled picker
+// is not re-offered on the same page; a new origin gets a fresh offer.
+@MainActor
+enum CSecurityFillSuggestion {
+  private static var offeredFor: Set<String> = []
+
+  static func offerIfNeeded(tab: UUID, url: URL, kind: String) async {
+    guard kind == "password", !Engine.shared.incognitoTabs.contains(tab),
+      let origin = CredentialPage.origin(url)
+    else { return }
+    let key = tab.uuidString + "|" + origin
+    guard !offeredFor.contains(key) else { return }
+    let service = CSecurityService.shared
+    if !service.isVaultReady { service.prepare() }
+    guard service.isVaultReady,
+      let matches = try? service.metadata(forPageURL: url), !matches.isEmpty
+    else { return }
+    // Mark before presenting: the monitor polls every 350 ms, and
+    // without this a second picker would stack while the first is open.
+    offeredFor.insert(key)
+    _ = await CSecurityAutofillFlow.fill(tab: tab, url: url)
   }
 }
 

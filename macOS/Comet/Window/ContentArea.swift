@@ -113,6 +113,7 @@ private struct Pane: View {
   let accent: Color
   let isThemed: Bool
   let isSplit: Bool
+  @State private var agent = AgentActivity.shared
   // The page as a still while the Library is open or a swipe brings it in: a web view's frame cannot animate,
   // and the still rides along in the card at the window's edge.
   @State private var still: NSImage?
@@ -204,6 +205,16 @@ private struct Pane: View {
         PageDialogOverlay(tab: tab.id)
       }
     }
+    .overlay {
+      // The square-select layer sits over the web view only while
+      // Agent is in selection mode for this tab. It intercepts the
+      // drag, so the page's own mouse-down handler (which pauses a
+      // running agent) never sees it, and the agent is not paused by
+      // its own selection gesture.
+      if agent.isSelectingRegion, let tab, tab.id == agent.tab {
+        AgentRegionSelectOverlay(tab: tab.id, accent: accent)
+      }
+    }
     .task(id: isFrozen) {
       guard isFrozen else {
         // The still stays through the Library's closing motion, then the live page returns.
@@ -274,5 +285,64 @@ private struct PageDialogOverlay: View {
     if let dialog = Engine.shared.dialogs[tab] {
       PageDialogView(dialog: dialog).id(dialog.id).clipShape(RoundedRectangle(cornerRadius: 6))
     }
+  }
+}
+
+// The square tool: drag over the web view to draw a rectangle. The
+// rectangle is reported in the overlay's local coordinates (top-left
+// origin), which Agent treats as CSS viewport pixels — the same
+// coordinates getBoundingClientRect uses — so the region script can
+// intersect element boxes with it directly. A drag under 8 pt on a
+// side is ignored by finishRegionSelection, so a stray click is not a
+// selection. The overlay is only present while Agent is selecting,
+// so normal page clicks, scrolling and typing are untouched.
+private struct AgentRegionSelectOverlay: View {
+  let tab: Tab.ID
+  let accent: Color
+  @State private var start: CGPoint?
+  @State private var current: CGPoint?
+
+  private var rect: CGRect? {
+    guard let start, let current else { return nil }
+    return CGRect(
+      x: min(start.x, current.x), y: min(start.y, current.y),
+      width: abs(current.x - start.x), height: abs(current.y - start.y))
+  }
+
+  var body: some View {
+    ZStack(alignment: .top) {
+      Color.clear
+        .contentShape(Rectangle())
+        .gesture(
+          DragGesture(minimumDistance: 0)
+            .onChanged { value in
+              if start == nil { start = value.startLocation }
+              current = value.location
+            }
+            .onEnded { _ in
+              let selected = rect
+              start = nil
+              current = nil
+              if let selected {
+                AgentActivity.shared.finishRegionSelection(rect: selected, tab: tab)
+              } else {
+                AgentActivity.shared.cancelRegionSelection()
+              }
+            }
+        )
+      Text("Drag a square over the page")
+        .font(.system(size: 11, weight: .medium))
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .background(.ultraThinMaterial, in: Capsule())
+        .padding(.top, 8)
+      if let rect {
+        Rectangle()
+          .strokeBorder(accent, lineWidth: 1.5)
+          .background(accent.opacity(0.12))
+          .frame(width: rect.width, height: rect.height)
+          .position(x: rect.midX, y: rect.midY)
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }

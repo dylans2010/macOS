@@ -55,6 +55,35 @@ final class CometIntelligenceTests: XCTestCase {
     XCTAssertFalse(AgentProtocol.needsConfirmation("click_element", confirmInteractions: false))
   }
 
+  func testPerChatApprovalStopsRepeatedPromptsButNotNavigation() {
+    // One approval per chat: clicks stop asking in that chat.
+    XCTAssertFalse(AgentProtocol.needsConfirmation("click_element", confirmInteractions: true, perChatApproved: true))
+    XCTAssertFalse(AgentProtocol.needsConfirmation("fill_input", confirmInteractions: true, perChatApproved: true))
+    // Navigation still asks every time, even in an approved chat, so
+    // approval can never silently leave the page.
+    XCTAssertTrue(AgentProtocol.needsConfirmation("navigate_to_url", confirmInteractions: false, perChatApproved: true))
+    XCTAssertTrue(AgentProtocol.needsConfirmation("go_back", confirmInteractions: false, perChatApproved: true))
+    // Reads never asked in the first place.
+    XCTAssertFalse(AgentProtocol.needsConfirmation("get_region_text", confirmInteractions: true, perChatApproved: false))
+    // Legacy settings files decode with per-chat approval on.
+    let legacy = try? JSONDecoder().decode(AISettings.self, from: Data(#"{"isEnabled":true}"#.utf8))
+    XCTAssertEqual(legacy?.approveOncePerChat, true)
+  }
+
+  func testAgentChatAndRegionRoundTrip() throws {
+    let chat = AgentChat(title: "Summarise this", messages: [AgentMessage(id: UUID(), role: "user", text: "Summarise this")])
+    let data = try JSONEncoder().encode(chat)
+    let decoded = try JSONDecoder().decode(AgentChat.self, from: data)
+    XCTAssertEqual(decoded, chat)
+    let region = AgentRegion(x: 10, y: 20, width: 300, height: 200, text: "Hello")
+    XCTAssertEqual(region.summary, "Selected area (10, 20, 300 × 200)")
+    // The region script intersects element boxes with the dragged
+    // rectangle in viewport coordinates; it never reads field values.
+    let script = AgentTools.regionScript(x: 10, y: 20, width: 300, height: 200)
+    XCTAssertTrue(script.contains("getBoundingClientRect"))
+    XCTAssertFalse(script.contains("input[type=\"password\"]"))
+  }
+
   func testSelectorAndURLValidation() {
     XCTAssertNil(AgentTools.safeSelector("javascript:alert(1)"))
     XCTAssertNil(AgentTools.safeSelector("div { color: red }"))

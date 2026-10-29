@@ -234,7 +234,8 @@ struct AIPane: View {
       }
       .padding(.horizontal, 10)
       SettingsToggle("Ask before Agent clicks, types, or changes a control", isOn: $settings.confirmAgentActions)
-      Text("Navigation always asks. Reading the page does not. Agent never submits a form on its own.")
+      SettingsToggle("Ask once per chat, not once per action", isOn: $settings.approveOncePerChat)
+      Text("With “once per chat” on, Approve for this chat covers the rest of that chat. Navigation always asks, once per navigation. Reading the page does not ask. Agent never submits a form on its own.")
         .font(.system(size: 11)).foregroundStyle(.secondary).padding(.horizontal, 10).padding(.bottom, 10)
     }
     .settingsCard()

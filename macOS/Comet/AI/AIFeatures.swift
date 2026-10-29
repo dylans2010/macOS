@@ -96,6 +96,10 @@ struct AISettings: Equatable, Sendable {
   var instantLinks = true
   var agent = true
   var confirmAgentActions = true
+  /// When true (the default), one "Approve for this chat" covers the
+  /// rest of that chat's page-changing actions. When false, every
+  /// action asks again, as before. Navigation always asks regardless.
+  var approveOncePerChat = true
   var allowInsecureHTTP = false
   var agentSystemPrompt = ""
   var provider = AIProviderKind.openai
@@ -148,7 +152,7 @@ struct AISettings: Equatable, Sendable {
 extension AISettings: Codable {
   private enum CodingKeys: String, CodingKey {
     case isEnabled, linkPreviews, askOnPage, tidyTabs, tidyTabTitles, tidyDownloads, commandBarAsk, instantLinks
-    case agent, confirmAgentActions, allowInsecureHTTP, agentSystemPrompt, provider, model, baseURL
+    case agent, confirmAgentActions, approveOncePerChat, allowInsecureHTTP, agentSystemPrompt, provider, model, baseURL
   }
 
   init(from decoder: Decoder) throws {
@@ -163,6 +167,7 @@ extension AISettings: Codable {
     instantLinks = try container.decodeIfPresent(Bool.self, forKey: .instantLinks) ?? true
     agent = try container.decodeIfPresent(Bool.self, forKey: .agent) ?? true
     confirmAgentActions = try container.decodeIfPresent(Bool.self, forKey: .confirmAgentActions) ?? true
+    approveOncePerChat = try container.decodeIfPresent(Bool.self, forKey: .approveOncePerChat) ?? true
     allowInsecureHTTP = try container.decodeIfPresent(Bool.self, forKey: .allowInsecureHTTP) ?? false
     agentSystemPrompt = try container.decodeIfPresent(String.self, forKey: .agentSystemPrompt) ?? ""
     provider = try container.decodeIfPresent(AIProviderKind.self, forKey: .provider) ?? .openai

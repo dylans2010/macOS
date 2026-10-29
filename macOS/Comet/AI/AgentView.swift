@@ -8,26 +8,57 @@ struct AgentPanel: View {
   @State private var showsPrompt = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .top) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Agent").font(.system(size: 13, weight: .semibold))
-          Text(activity.phase.label).font(.system(size: 11)).foregroundStyle(.secondary)
-        }
+    VStack(alignment: .leading, spacing: 10) {
+      // Header: one title line, one status line, then chats. The old
+      // panel stacked provider, page title, URL, detail and a prompt
+      // disclosure before any message; that clutter is now one card.
+      HStack {
+        Text("Agent").font(.system(size: 14, weight: .semibold))
+        Text(activity.phase.label).font(.system(size: 11)).foregroundStyle(.secondary)
         Spacer(minLength: 8)
+        Button("New Chat", action: activity.newChat)
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .accessibilityLabel("New chat")
         Button { activity.close() } label: { Image(systemName: "xmark") }
           .buttonStyle(.plain)
           .accessibilityLabel("Close Agent")
       }
-      Text("\(settings.provider.title) · \(settings.resolvedModel.isEmpty ? "No model" : settings.resolvedModel)")
-        .font(.system(size: 11, weight: .medium))
-        .lineLimit(1)
-        .accessibilityLabel("Provider \(settings.provider.title), model \(settings.resolvedModel)")
-      Text(activity.title.isEmpty ? "No page in context" : activity.title)
-        .font(.system(size: 11)).lineLimit(1).foregroundStyle(.secondary)
-      Text(activity.url?.absoluteString ?? "Open Agent from a page to use that tab as context.")
-        .font(.system(size: 10)).lineLimit(2).foregroundStyle(.secondary)
-        .textSelection(.enabled)
+      HStack(spacing: 6) {
+        Picker("Chat", selection: Binding(
+          get: { activity.currentChatID ?? activity.chats.first?.id ?? UUID() },
+          set: { activity.selectChat($0) }
+        )) {
+          ForEach(activity.chats) { chat in
+            Text(chat.title).tag(chat.id)
+          }
+        }
+        .labelsHidden()
+        .frame(maxWidth: .infinity)
+        if let current = activity.currentChatID {
+          Button { activity.deleteChat(current) } label: { Image(systemName: "trash") }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Delete this chat")
+        }
+      }
+      VStack(alignment: .leading, spacing: 2) {
+        Text("\(settings.provider.title) · \(settings.resolvedModel.isEmpty ? "No model" : settings.resolvedModel)")
+          .font(.system(size: 11, weight: .medium))
+          .lineLimit(1)
+          .accessibilityLabel("Provider \(settings.provider.title), model \(settings.resolvedModel)")
+        Text(activity.title.isEmpty ? "No page in context" : activity.title)
+          .font(.system(size: 11)).lineLimit(1).foregroundStyle(.secondary)
+        Text(activity.url?.absoluteString ?? "Open Agent from a page to use that tab as context.")
+          .font(.system(size: 10)).lineLimit(1).foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      }
+      if activity.needsEnable {
+        Button("Enable Agent") { activity.enableAgent() }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.small)
+        Text("Agent is off in Settings → AI Features. Enabling it here only turns Agent on; it changes nothing else.")
+          .font(.system(size: 11)).foregroundStyle(.secondary)
+      }
       if !activity.detail.isEmpty {
         Text(activity.detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(3)
       }
@@ -36,10 +67,27 @@ struct AgentPanel: View {
         Button(activity.phase == .paused ? "Resume" : "Pause", action: { activity.phase == .paused ? activity.resume() : activity.pause() })
           .disabled(!activity.isEngaged && activity.phase != .paused)
         Button("Take Over", action: activity.takeOver).disabled(!activity.isEngaged)
+        if activity.isSelectingRegion {
+          Button("Cancel Selection", action: activity.cancelRegionSelection)
+        } else {
+          Button("Select area", action: activity.beginRegionSelection)
+            .disabled(activity.isEngaged)
+        }
       }
       .buttonStyle(.borderless)
       .font(.system(size: 11))
       .accessibilityElement(children: .contain)
+      if activity.isSelectingRegion {
+        Text("Drag a square over the page. Agent will work on that area instead of the whole page.")
+          .font(.system(size: 11)).foregroundStyle(.secondary)
+      }
+      if let region = activity.selectedRegion {
+        HStack {
+          Text("\(region.summary) selected").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+          Spacer()
+          Button("Clear", action: activity.clearRegion).buttonStyle(.borderless).font(.system(size: 11))
+        }
+      }
       DisclosureGroup("System prompt", isExpanded: $showsPrompt) {
         ScrollView {
           Text(settings.activeAgentPrompt)
@@ -71,7 +119,7 @@ struct AgentPanel: View {
                   .textSelection(.enabled)
               }
               .padding(8)
-              .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+              .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
               .id("live")
             }
           }
@@ -95,9 +143,12 @@ struct AgentPanel: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .textSelection(.enabled)
           HStack {
-            Button("Approve", action: activity.approve)
+            Button("Approve once", action: activity.approve)
+            Button("Approve for this chat", action: activity.approveForChat)
             Button("Don’t allow", action: activity.deny)
           }
+          Text("“For this chat” stops the repeated prompts for this chat. Navigation still asks every time.")
+            .font(.system(size: 10)).foregroundStyle(.secondary)
         }
         .padding(8)
         .background(.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
@@ -116,7 +167,7 @@ struct AgentPanel: View {
         Spacer(minLength: 0)
       }
       .font(.system(size: 12))
-      Text("Page content is sent only while Agent is enabled. Passwords are not.")
+      Text("Page content is sent only while Agent is enabled. Passwords are not. Select area limits Agent to the square you dragged.")
         .font(.system(size: 10)).foregroundStyle(.secondary)
     }
     .padding(12)
@@ -141,7 +192,7 @@ struct AgentPanel: View {
           .lineLimit(1)
       }
       .padding(8)
-      .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+      .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
       .accessibilityLabel("Tool result")
     } else {
       Text(message.text)
@@ -149,7 +200,7 @@ struct AgentPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .textSelection(.enabled)
         .padding(8)
-        .background(message.role == "user" ? Color.white.opacity(0.08) : Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+        .background(message.role == "user" ? Color.white.opacity(0.08) : Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
         .accessibilityLabel(message.role == "user" ? "You" : "Agent")
     }
   }

@@ -93,6 +93,36 @@ final class CSecurityTests: XCTestCase {
     }
   }
 
+  func testLoadedVaultServesFromMemoryWithoutReReadingDisk() throws {
+    let files = CSecurityVault.MemoryFileStore()
+    let store = CSecurityVault.Store(keyStore: CSecurityVault.MemoryKeyStore(), fileStore: files)
+    try store.load()
+    let credential = CSecurityCredential.make(
+      url: "https://example.com/login", username: "ada@example.com", password: "fake-password-1")!
+    try store.save([credential])
+    // The file is now damaged, but the vault is already loaded, so a
+    // second load must serve the in-memory credentials, not re-read
+    // (and fail on) the disk copy. Only Lock purges this cache.
+    files.corruptCurrent()
+    XCTAssertEqual(try store.load().count, 1)
+    XCTAssertEqual(try store.credentials().first?.password, "fake-password-1")
+  }
+
+  func testMetadataCacheIsClearedByWrites() throws {
+    let service = service()
+    let first = CSecurityCredential.make(
+      url: "https://example.com/login", username: "ada@example.com", password: "fake-password-1")!
+    try service.save(first)
+    XCTAssertEqual(try service.metadata().count, 1)
+    let second = CSecurityCredential.make(
+      url: "https://example.org/login", username: "grace@example.org", password: "fake-password-2")!
+    try service.save(second)
+    // Without cache invalidation this would still read 1.
+    XCTAssertEqual(try service.metadata().count, 2)
+    try service.delete(id: first.id)
+    XCTAssertEqual(try service.metadata().count, 1)
+  }
+
   // MARK: - Origin matching
 
   func testSecurityMatchingIsStrictOriginOnly() {
@@ -260,6 +290,11 @@ final class CSecurityTests: XCTestCase {
     // The take script only moves an already-captured pending value; it
     // must not contain a field query of its own.
     XCTAssertFalse(CSecuritySaveScript.takePending.contains("querySelector"))
+    // Fetch / single-page-app logins never fire a form submit, so the
+    // listener also captures on a submit-button click, at that user
+    // action only — never by polling field values.
+    XCTAssertTrue(CSecuritySaveScript.install.contains("addEventListener(\"submit\""))
+    XCTAssertTrue(CSecuritySaveScript.install.contains("addEventListener(\"click\""))
   }
 
   func testMigrationConverter() {
