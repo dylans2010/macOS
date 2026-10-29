@@ -15,10 +15,14 @@ struct EaselsView: View {
   }
 
   var body: some View {
-    HStack(spacing: 0) {
-      list
-      Divider().overlay(Theme.divider)
-      canvas
+    GeometryReader { proxy in
+      let listWidth = min(320, max(200, proxy.size.width * 0.32))
+      HStack(spacing: 0) {
+        list.frame(width: listWidth, height: proxy.size.height)
+        Divider().overlay(Theme.divider)
+        canvas.frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+      .frame(width: proxy.size.width, height: proxy.size.height)
     }
     .onAppear {
       if selected == nil { $selectedID.withLock { $0 = easels.first?.id.uuidString } }
@@ -65,7 +69,7 @@ struct EaselsView: View {
       }
     }
     .padding(.horizontal, 7)
-    .frame(width: 304)
+    .frame(maxHeight: .infinity)
   }
 
   private var searchField: some View {
@@ -127,14 +131,21 @@ struct EaselsView: View {
   @ViewBuilder private var canvas: some View {
     if let easel = selected {
       VStack(alignment: .leading, spacing: 0) {
-        TextField("Untitled", text: titleBinding(easel))
-          .textFieldStyle(.plain)
-          .font(.system(size: 20, weight: .semibold))
-          .focused($titleFocused)
-          .padding(.horizontal, 18)
-          .padding(.top, 14)
-          .padding(.bottom, 6)
-          .accessibilityLabel("Easel title")
+        HStack(spacing: 10) {
+          TextField("Untitled", text: titleBinding(easel))
+            .textFieldStyle(.plain)
+            .font(.system(size: 20, weight: .semibold))
+            .focused($titleFocused)
+            .accessibilityLabel("Easel title")
+          Spacer(minLength: 0)
+          Button("Show Page") { window.send(.toggleLibrary) }
+            .buttonStyle(.plain)
+            .font(.system(size: 12, weight: .medium))
+            .accessibilityLabel("Close Easels and show the page")
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
+        .padding(.bottom, 6)
         EaselCanvas(
           easel: easel,
           space: window.spaces.selected,
@@ -146,7 +157,9 @@ struct EaselsView: View {
             }
           },
           toast: { window.send(.showToast($0)) })
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     } else {
       VStack(spacing: 10) {
         Image(systemName: "square.grid.2x2").font(.system(size: 36)).foregroundStyle(.secondary)

@@ -15,6 +15,61 @@ final class AIFeaturesTests: XCTestCase {
     XCTAssertFalse(settings.isOn(.linkPreviews))
   }
 
+  func testModelsURLAndParsing() throws {
+    XCTAssertEqual(ModelDiscovery.listURL(URL(string: "https://api.openai.com/v1")!).absoluteString, "https://api.openai.com/v1/models")
+    XCTAssertEqual(ModelDiscovery.listURL(URL(string: "https://api.openai.com/v1/")!).absoluteString, "https://api.openai.com/v1/models")
+    XCTAssertEqual(ModelDiscovery.listURL(URL(string: "https://example.com/v1/models")!).absoluteString, "https://example.com/v1/models")
+    XCTAssertEqual(ModelDiscovery.listURL(URL(string: "https://example.com/v1/chat/completions")!).absoluteString, "https://example.com/v1/models")
+    XCTAssertEqual(
+      ModelDiscovery.listURL(URL(string: "https://generativelanguage.googleapis.com/v1beta")!).absoluteString,
+      "https://generativelanguage.googleapis.com/v1beta/models")
+    let open = try ModelDiscovery.parse(Data(#"{"data":[{"id":"gpt-4o-mini","owned_by":"openai"}]}"#.utf8), provider: .openai)
+    XCTAssertEqual(open.map(\.id), ["gpt-4o-mini"])
+    XCTAssertFalse(open[0].capabilitiesKnown)
+    let gemini = try ModelDiscovery.parse(
+      Data(#"{"models":[{"name":"models/gemini-2.0-flash","displayName":"Flash","supportedGenerationMethods":["generateContent"]}]}"#.utf8),
+      provider: .gemini)
+    XCTAssertEqual(gemini[0].id, "gemini-2.0-flash")
+    XCTAssertEqual(gemini[0].displayName, "Flash")
+    XCTAssertEqual(gemini[0].capabilities, ["generateContent"])
+    XCTAssertTrue(gemini[0].capabilitiesKnown)
+    let anthropic = try ModelDiscovery.parse(
+      Data(#"{"data":[{"id":"claude-3-5-haiku-latest","display_name":"Haiku"}]}"#.utf8), provider: .anthropic)
+    XCTAssertEqual(anthropic[0].displayName, "Haiku")
+    XCTAssertThrowsError(try ModelDiscovery.parse(Data("{}".utf8), provider: .openai))
+    XCTAssertThrowsError(try ModelDiscovery.parse(Data(#"{"data":[]}"#.utf8), provider: .custom))
+  }
+
+  func testDiscoveryRequestDoesNotPutTheKeyInTheURL() throws {
+    let settings = AISettings(provider: .custom, model: "local", baseURL: "https://example.com/v1")
+    let request = try ModelDiscovery.makeRequest(settings: settings, key: "sk-test-secret", headers: ["X-Title": "Comet", "Cookie": "nope"])
+    XCTAssertEqual(request.httpMethod, "GET")
+    XCTAssertEqual(request.url?.absoluteString, "https://example.com/v1/models")
+    XCTAssertFalse(request.url!.absoluteString.contains("sk-test-secret"))
+    XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-test-secret")
+    XCTAssertEqual(request.value(forHTTPHeaderField: "X-Title"), "Comet")
+    XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
+    XCTAssertEqual(request.timeoutInterval, 20)
+  }
+
+  func testSelectedModelIsSentOnTheGenerationRequest() throws {
+    let settings = AISettings(provider: .openai, model: "gpt-test-model")
+    let request = try OpenAICompatible.request(
+      AIRequest.make(feature: .agent, system: "s", prompt: "p", provenance: "t"),
+      settings: settings, key: "sk-test", stream: false)
+    let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+    XCTAssertEqual(body["model"] as? String, "gpt-test-model")
+    XCTAssertEqual(request.url?.path, "/v1/chat/completions")
+    XCTAssertFalse(request.url!.absoluteString.contains("sk-test"))
+  }
+
+  func testExtraHeaderNames() {
+    XCTAssertFalse(AIExtraHeaders.allowed("Cookie"))
+    XCTAssertFalse(AIExtraHeaders.allowed("Host"))
+    XCTAssertTrue(AIExtraHeaders.allowed("X-Title"))
+    XCTAssertEqual(AIExtraHeaders.parse("X-Title: Comet\nCookie: secret").keys.sorted(), ["X-Title"])
+  }
+
   func testOpenAIResponseParsing() throws {
     let data = Data(
       """

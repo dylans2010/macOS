@@ -232,20 +232,25 @@ struct WindowFeature {
   // The Library covers the sidebar at this width, its rail and column. A swipe uncovers it twice as fast as the
   // space strip moves, which is half the fingers' speed.
   static let libraryWidth: CGFloat = 417
-  // Spaces leaves this sliver of the page; Notes and Easels keep at least this much so the page stays usable.
+  // Spaces leaves this sliver of the page. Notes and Easels do not: they take the content area.
   static let libraryPageGutter: CGFloat = 46
-  static let libraryBesidePage: CGFloat = 280
+
+  // Notes and Easels replace the web content. An intentional tab split stays on the space and returns
+  // when the workspace closes; it is not the page strip beside the library.
+  static func hidesWebContent(libraryOpen: Bool, pane: LibraryFeature.Pane?) -> Bool {
+    libraryOpen && pane?.replacesPage == true
+  }
 
   static func libraryOpenWidth(_ pane: LibraryFeature.Pane, windowWidth: CGFloat) -> CGFloat {
+    if pane.replacesPage { return 0 }
     if pane.expandsOverPage { return max(windowWidth - libraryPageGutter, libraryWidth) }
-    if pane.sitsBesidePage {
-      return min(max(windowWidth * 0.62, libraryWidth), max(windowWidth - libraryBesidePage, libraryWidth))
-    }
     return libraryWidth
   }
 
   static func libraryPageNarrow(_ pane: LibraryFeature.Pane, open: CGFloat, sidebar: CGFloat) -> CGFloat {
-    max((pane.sitsBesidePage ? open : libraryWidth) - sidebar, 0)
+    if pane.replacesPage { return 0 }
+    _ = open
+    return max(libraryWidth - sidebar, 0)
   }
   // What a two-finger swipe over the sidebar moves, fixed as the gesture begins.
   enum SwipeSurface: Equatable {

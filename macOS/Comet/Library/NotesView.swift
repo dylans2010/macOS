@@ -17,12 +17,16 @@ struct NotesView: View {
   }
 
   var body: some View {
-    HStack(spacing: 0) {
-      if !focusMode {
-        list
-        Divider().overlay(Theme.divider)
+    GeometryReader { proxy in
+      let listWidth = min(320, max(200, proxy.size.width * 0.32))
+      HStack(spacing: 0) {
+        if !focusMode {
+          list.frame(width: listWidth, height: proxy.size.height)
+          Divider().overlay(Theme.divider)
+        }
+        editor.frame(maxWidth: .infinity, maxHeight: .infinity)
       }
-      editor
+      .frame(width: proxy.size.width, height: proxy.size.height)
     }
     .onAppear {
       if selected == nil { $selectedID.withLock { $0 = notes.first?.id.uuidString } }
@@ -81,7 +85,7 @@ struct NotesView: View {
       }
     }
     .padding(.horizontal, 7)
-    .frame(width: 304)
+    .frame(maxHeight: .infinity)
   }
 
   private var searchField: some View {
@@ -155,14 +159,25 @@ struct NotesView: View {
   @ViewBuilder private var editor: some View {
     if let note = selected {
       VStack(alignment: .leading, spacing: 0) {
-        HStack(spacing: 10) {
-          TextField("Untitled", text: titleBinding(note))
-            .textFieldStyle(.plain)
-            .font(.system(size: 20, weight: .semibold))
-            .focused($titleFocused)
-            .accessibilityLabel("Note title")
-          Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 8) {
+          HStack(spacing: 10) {
+            TextField("Untitled", text: titleBinding(note))
+              .textFieldStyle(.plain)
+              .font(.system(size: 20, weight: .semibold))
+              .focused($titleFocused)
+              .accessibilityLabel("Note title")
+            Spacer(minLength: 0)
+            Button("Show Page") { window.send(.toggleLibrary) }
+              .buttonStyle(.plain)
+              .font(.system(size: 12, weight: .medium))
+              .accessibilityLabel("Close Notes and show the page")
+          }
           noteTools(note)
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 18)
+        .padding(.bottom, 4)
+        Group {
           if let url = note.sourceURL {
             Button {
               window.send(.tab(.open(url), in: window.spaces.selectedID))
@@ -197,12 +212,11 @@ struct NotesView: View {
           }
         }
         .padding(.horizontal, 22)
-        .padding(.top, 18)
-        .padding(.bottom, 4)
         noteMeta(note)
         MarkdownEditor(text: contentBinding(note), onChange: {})
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     } else {
       VStack(spacing: 10) {
         Image(systemName: "note.text").font(.system(size: 36)).foregroundStyle(.secondary)

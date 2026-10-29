@@ -77,6 +77,42 @@ final class CometIntelligenceTests: XCTestCase {
     XCTAssertFalse(StyleMatch.combinedScript([style], for: URL(string: "https://news.example.com/story")!).contains("alert"))
   }
 
+  func testStylePathBoundaryURLPatternAndUserCSS() throws {
+    var style = StyleTemplate.named("A", css: "body{}")
+    style.enabled = true
+    style.hosts = ["*.example.com"]
+    style.excludedPaths = ["/private"]
+    XCTAssertFalse(StyleMatch.matches(URL(string: "https://news.example.com/private/x")!, style))
+    XCTAssertTrue(StyleMatch.matches(URL(string: "https://news.example.com/privateer")!, style))
+    style.hosts = ["https://example.com/docs*"]
+    style.excludedPaths = []
+    XCTAssertTrue(StyleMatch.matches(URL(string: "https://example.com/docs/a")!, style))
+    XCTAssertFalse(StyleMatch.matches(URL(string: "https://example.com/other")!, style))
+    XCTAssertFalse(StyleMatch.matches(URL(string: "https://evil.example/docs")!, style))
+    let source = StyleMatch.injection(css: "a\"b", script: "")
+    XCTAssertTrue(source.contains("\\\""))
+    XCTAssertTrue(source.contains("comet-styles"))
+    XCTAssertFalse(source.contains(".submit"))
+    let text = """
+      /* ==UserStyle==
+      @name Quiet
+      @description Dim ads
+      @match example.com
+      ==/UserStyle== */
+      body { color: black }
+      """
+    let imported = StyleTransfer.userCSS(text)
+    XCTAssertEqual(imported?.name, "Quiet")
+    XCTAssertEqual(imported?.note, "Dim ads")
+    XCTAssertEqual(imported?.hosts, ["example.com"])
+    XCTAssertEqual(imported?.enabled, true)
+    let data = try StyleTransfer.exportJSON([imported!])
+    let roundTrip = try StyleTransfer.importData(data)
+    XCTAssertEqual(roundTrip.map(\.name), ["Quiet"])
+    XCTAssertTrue(CSSValidation.issues(in: "body { color: black }").isEmpty)
+    XCTAssertFalse(CSSValidation.issues(in: "body { color: black").isEmpty)
+  }
+
   func testDisabledStyleDoesNotMatch() {
     var style = StyleTemplate.named("Width", css: "body{}")
     style.hosts = ["example.com"]

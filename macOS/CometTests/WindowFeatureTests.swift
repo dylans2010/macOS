@@ -56,14 +56,43 @@ final class WindowFeatureTests: XCTestCase {
     }
   }
 
-  func testNotesAndEaselsSitBesideThePage() {
+  func testNotesAndEaselsReplaceThePage() {
+    XCTAssertTrue(LibraryFeature.Pane.notes.replacesPage)
+    XCTAssertTrue(LibraryFeature.Pane.easels.replacesPage)
+    XCTAssertFalse(LibraryFeature.Pane.media.replacesPage)
+    XCTAssertFalse(LibraryFeature.Pane.spaces.replacesPage)
+    XCTAssertTrue(WindowFeature.hidesWebContent(libraryOpen: true, pane: .notes))
+    XCTAssertTrue(WindowFeature.hidesWebContent(libraryOpen: true, pane: .easels))
+    XCTAssertFalse(WindowFeature.hidesWebContent(libraryOpen: false, pane: .notes))
+    XCTAssertFalse(WindowFeature.hidesWebContent(libraryOpen: true, pane: .media))
+    XCTAssertFalse(WindowFeature.hidesWebContent(libraryOpen: true, pane: .spaces))
+    XCTAssertEqual(WindowFeature.libraryOpenWidth(.notes, windowWidth: 1200), 0)
+    XCTAssertEqual(WindowFeature.libraryOpenWidth(.easels, windowWidth: 800), 0)
+    XCTAssertEqual(WindowFeature.libraryPageNarrow(.notes, open: 900, sidebar: 200), 0)
     XCTAssertEqual(WindowFeature.libraryOpenWidth(.downloads, windowWidth: 1200), WindowFeature.libraryWidth)
     XCTAssertEqual(WindowFeature.libraryOpenWidth(.spaces, windowWidth: 1200), 1200 - WindowFeature.libraryPageGutter)
-    let notes = WindowFeature.libraryOpenWidth(.notes, windowWidth: 1200)
-    XCTAssertGreaterThan(notes, WindowFeature.libraryWidth)
-    XCTAssertLessThanOrEqual(notes, 1200 - WindowFeature.libraryBesidePage)
-    XCTAssertEqual(WindowFeature.libraryOpenWidth(.notes, windowWidth: 1200), WindowFeature.libraryOpenWidth(.easels, windowWidth: 1200))
-    XCTAssertGreaterThan(WindowFeature.libraryPageNarrow(.notes, open: notes, sidebar: 0), WindowFeature.libraryWidth)
-    XCTAssertEqual(WindowFeature.libraryPageNarrow(.downloads, open: notes, sidebar: 0), WindowFeature.libraryWidth)
+    XCTAssertEqual(WindowFeature.libraryPageNarrow(.downloads, open: 900, sidebar: 0), WindowFeature.libraryWidth)
+  }
+
+  func testOpeningNotesKeepsAnIntentionalSplit() async {
+    let now = self.now
+    var home = Space(id: UUID(1), name: "Home", profileID: UUID(200), createdAt: now)
+    let left = UUID(50)
+    let right = UUID(51)
+    home.tabs = [
+      Tab(id: left, url: URL(string: "https://example.com")!, title: "Example", placement: .unpinned, createdAt: now, lastActiveAt: now),
+      Tab(id: right, url: URL(string: "https://youtube.com")!, title: "Video", placement: .unpinned, createdAt: now, lastActiveAt: now),
+    ]
+    home.selectedTabID = left
+    home.splits = [Split(id: UUID(9), tabIDs: [left, right], widths: [0.5, 0.5])]
+    let state = WindowFeature.State(id: UUID(3), sidebar: .init(), spaces: .init(spaces: [home], selectedID: home.id))
+    let store = TestStore(initialState: state) { WindowFeature() }
+    store.exhaustivity = .off
+    await store.send(.showLibrary(.notes)) {
+      $0.isLibraryOpen = true
+      $0.library = LibraryFeature.State(pane: .notes)
+    }
+    XCTAssertEqual(store.state.spaces.selected.splits.map(\.tabIDs), [[left, right]])
+    XCTAssertEqual(store.state.spaces.selected.selectedTabID, left)
   }
 }

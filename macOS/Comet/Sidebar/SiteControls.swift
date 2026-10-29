@@ -12,6 +12,7 @@ struct SiteControls: View {
   let open: (URL) -> Void
   @State private var revision = 0
   @Shared(.developerMode) private var developerMode
+  @Shared(.siteStyles) private var styles
 
   var body: some View {
     let _ = revision
@@ -51,6 +52,16 @@ struct SiteControls: View {
           isOn: url.showsDeveloperChrome)
       }
       .buttonStyle(.plain)
+      Button {
+        StyleSiteSession.shared.present(url: url)
+      } label: {
+        setting(
+          "paintbrush.fill", "Styles",
+          styles.contains { StyleMatch.matches(url, $0) } ? "On for this site" : "Off",
+          isOn: styles.contains { StyleMatch.matches(url, $0) })
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Styles for this site")
       setting("gearshape.fill", "Automatic Picture-In-Picture", nil, isOn: false).opacity(0.4).allowsHitTesting(false)
         .accessibilityHidden(true)
       ForEach(permissions.keys.sorted(), id: \.self) { key in

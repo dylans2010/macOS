@@ -10,7 +10,7 @@ struct MarkdownEditor: NSViewRepresentable {
   func makeCoordinator() -> Coordinator { Coordinator(self) }
 
   func makeNSView(context: Context) -> NSScrollView {
-    let scroll = NSScrollView()
+    let scroll = EditorScrollView()
     scroll.drawsBackground = false
     scroll.borderType = .noBorder
     scroll.hasVerticalScroller = true
@@ -39,7 +39,11 @@ struct MarkdownEditor: NSViewRepresentable {
     textView.isVerticallyResizable = true
     textView.isHorizontallyResizable = false
     textView.autoresizingMask = [.width]
+    textView.minSize = NSSize(width: 0, height: 0)
+    textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
     textView.textContainer?.widthTracksTextView = true
+    textView.textContainer?.heightTracksTextView = false
+    textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
     textView.textContainer?.lineFragmentPadding = 0
     textView.setAccessibilityLabel("Note")
     scroll.documentView = textView
@@ -72,6 +76,22 @@ struct MarkdownEditor: NSViewRepresentable {
       isApplying = true
       MarkdownHighlight.apply(to: textView)
       isApplying = false
+    }
+  }
+}
+
+private final class EditorScrollView: NSScrollView {
+  override func layout() {
+    super.layout()
+    guard let textView = documentView as? NSTextView, contentSize.width > 1 else { return }
+    let inset = textView.textContainerInset
+    let width = contentSize.width
+    textView.textContainer?.containerSize = NSSize(width: max(width - inset.width * 2, 0), height: CGFloat.greatestFiniteMagnitude)
+    textView.textContainer?.widthTracksTextView = true
+    let used = textView.layoutManager?.usedRect(for: textView.textContainer!).height ?? 0
+    let height = max(contentSize.height, used + inset.height * 2)
+    if abs(textView.frame.width - width) > 0.5 || abs(textView.frame.height - height) > 0.5 {
+      textView.frame = NSRect(x: 0, y: 0, width: width, height: height)
     }
   }
 }

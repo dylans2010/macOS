@@ -6,9 +6,12 @@ struct WindowView: View {
   @State private var themePreview: SpaceTheme?
   // The sidebar's width when a drag on its edge began.
   @State private var resizeStart: Double?
+  @State private var agentResizeStart: Double?
   @State private var downloadThrows = DownloadThrows()
   @State private var agent = AgentActivity.shared
+  @State private var styleSite = StyleSiteSession.shared
   @Shared(.tabLayout) private var tabLayout
+  @Shared(.agentSidebarWidth) private var agentWidth
 
   var body: some View {
     let isFloating = store.sidebar.isFloating
@@ -73,6 +76,19 @@ struct WindowView: View {
       }
     }
     .animation(Motion.layout, value: store.toast?.id)
+    .overlay {
+      if styleSite.isPresented {
+        ZStack {
+          Color.black.opacity(0.28).ignoresSafeArea()
+            .onTapGesture { StyleSiteSession.shared.dismiss() }
+          StyleSitePanel()
+            .frame(width: 460, height: 580)
+        }
+        .transition(.opacity)
+      }
+    }
+    .animation(Motion.layout, value: styleSite.isPresented)
+    .task(id: passwordTaskID) { await PasswordFieldMonitor.shared.watch(token: passwordTaskID) }
     .onPreferenceChange(ThemePreview.self) { themePreview = $0 }
     .environment(
       \.colorScheme,
@@ -97,24 +113,29 @@ struct WindowView: View {
     }
   }
 
+  private var passwordTaskID: String {
+    if WindowFeature.hidesWebContent(libraryOpen: store.isLibraryOpen, pane: store.library?.pane) { return "hidden" }
+    guard let tab = store.spaces.selected.selectedTab else { return "none" }
+    return "\(tab.id.uuidString)\n\(tab.url.absoluteString)"
+  }
+
   @ViewBuilder private func layered(_ size: CGSize, isFloating: Bool, background: LinearGradient) -> some View {
-    // The Spaces pane covers all of the window but a sliver of the page. Notes and Easels sit beside it.
+    // The Spaces pane covers all of the window but a sliver of the page. Notes and Easels replace the page.
     let pane = store.library?.pane ?? .media
-    let open = WindowFeature.libraryOpenWidth(pane, windowWidth: size.width)
+    let workspace = WindowFeature.hidesWebContent(libraryOpen: store.isLibraryOpen, pane: store.library?.pane)
+    let open = workspace ? 0 : WindowFeature.libraryOpenWidth(pane, windowWidth: size.width)
     let side: CGFloat = isFloating ? 0 : store.sidebar.width
-    let shown = libraryShown(span: isFloating ? WindowFeature.libraryWidth : side)
+    let shown = workspace ? 0 : libraryShown(span: isFloating ? WindowFeature.libraryWidth : max(side, 1))
     let push = shown * max(open - side, 0)
-    // The page narrows only as far as beside the Library's column, except Notes and Easels, which keep the page
-    // in view by shrinking it to the remaining width.
-    let narrow = min(push, WindowFeature.libraryPageNarrow(pane, open: open, sidebar: side))
+    let narrow = workspace ? 0 : min(push, WindowFeature.libraryPageNarrow(pane, open: open, sidebar: side))
     ZStack(alignment: .topLeading) {
-      browser(isFloating: isFloating, background: background, library: (shown: shown, push: push))
+      browser(isFloating: isFloating, background: background, motion: (shown: shown, push: push), workspace: workspace)
     }
     .frame(width: size.width - narrow, height: size.height)
     .offset(x: push)
     // The Library is opaque over the sidebar and moves by its whole width, so its trailing edge stays the
     // sidebar's width short of the page's and the sidebar shows between them.
-    if let library = store.scope(state: \.library, action: \.library.presented) {
+    if !workspace, let library = store.scope(state: \.library, action: \.library.presented) {
       let x = -(1 - shown) * open
       LibraryView(store: library, window: store)
         .frame(width: open, height: size.height)
@@ -151,7 +172,7 @@ struct WindowView: View {
   // While the Library shows, the page is pushed this far right; the sidebar keeps its place and fades in only as
   // the Library leaves it.
   @ViewBuilder private func browser(
-    isFloating: Bool, background: LinearGradient, library: (shown: CGFloat, push: CGFloat)
+    isFloating: Bool, background: LinearGradient, motion: (shown: CGFloat, push: CGFloat), workspace: Bool
   ) -> some View {
     let theme = themePreview ?? store.spaces.selected.theme
     HStack(spacing: 0) {
@@ -159,8 +180,8 @@ struct WindowView: View {
         SidebarView(store: store)
           .frame(width: store.sidebar.width)
           .overlay(alignment: .trailing) { resizeHandle }
-          .opacity(pow(1 - Double(library.shown), 4))
-          .offset(x: -library.push)
+          .opacity(pow(1 - Double(motion.shown), 4))
+          .offset(x: -motion.push)
           .transition(.move(edge: .leading))
           // Above the page, so a space dot's tooltip reaches over it.
           .zIndex(1)
@@ -169,7 +190,11 @@ struct WindowView: View {
         if TabLayoutMode(rawValue: tabLayout) == .horizontal {
           HorizontalTabStrip(store: store)
         }
-        ContentArea(store: store, isThemed: !theme.colors.isEmpty)
+        if workspace, let library = store.scope(state: \.library, action: \.library.presented) {
+          WorkspaceDocument(store: library, window: store, isIncognito: store.isIncognito, isThemed: !theme.colors.isEmpty)
+        } else {
+          ContentArea(store: store, isThemed: !theme.colors.isEmpty)
+        }
       }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(DownloadThrows.space)) } action: {
           downloadThrows.page = $0
@@ -193,9 +218,6 @@ struct WindowView: View {
             if let ask = store.scope(state: \.askOnPage, action: \.askOnPage.presented) {
               AskOnPageView(store: ask)
             }
-            if agent.isOpen {
-              AgentPanel()
-            }
           }
           .padding(10)
         }
@@ -208,12 +230,18 @@ struct WindowView: View {
           }
         }
         .overlay(alignment: .bottomLeading) {
-          if agent.isEngaged {
+          if agent.isEngaged && !agent.isOpen {
             AgentStatusChip().padding(16)
           }
         }
         .padding([.top, .bottom, .trailing], 10)
         .padding(.leading, isFloating ? 10 : 0)
+      if agent.isOpen {
+        agentColumn
+          .padding(.trailing, 10)
+          .padding(.vertical, 10)
+          .transition(.move(edge: .trailing))
+      }
     }
 
     if isFloating {
@@ -252,6 +280,34 @@ struct WindowView: View {
     }
   }
 
+  private var agentColumn: some View {
+    HStack(spacing: 0) {
+      agentResizeHandle
+      AgentPanel()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    .frame(width: CGFloat(min(max(agentWidth, AgentSidebarMetrics.widths.lowerBound), AgentSidebarMetrics.widths.upperBound)))
+  }
+
+  private var agentResizeHandle: some View {
+    Color.clear
+      .frame(width: 5)
+      .contentShape(Rectangle())
+      .pointerStyle(.columnResize)
+      .accessibilityLabel("Resize Agent")
+      .gesture(
+        DragGesture(minimumDistance: 0, coordinateSpace: .global)
+          .onChanged { value in
+            let start = agentResizeStart ?? agentWidth
+            agentResizeStart = start
+            let next = start - value.translation.width
+            let clamped = min(max(next, AgentSidebarMetrics.widths.lowerBound), AgentSidebarMetrics.widths.upperBound)
+            $agentWidth.withLock { $0 = clamped }
+          }
+          .onEnded { _ in agentResizeStart = nil }
+      )
+  }
+
   // The sidebar resizes by dragging its trailing edge.
   private var resizeHandle: some View {
     Color.clear
@@ -267,6 +323,31 @@ struct WindowView: View {
           }
           .onEnded { _ in resizeStart = nil }
       )
+  }
+}
+
+// Notes and Easels fill the area the page card normally occupies. The tab sidebar and an intentional split stay put.
+struct WorkspaceDocument: View {
+  @Bindable var store: StoreOf<LibraryFeature>
+  let window: StoreOf<WindowFeature>
+  let isIncognito: Bool
+  let isThemed: Bool
+
+  private var fill: AnyShapeStyle {
+    isIncognito ? AnyShapeStyle(Theme.incognitoCard) : isThemed ? AnyShapeStyle(.white.opacity(0.1)) : AnyShapeStyle(Theme.card)
+  }
+
+  var body: some View {
+    Group {
+      if store.pane == .easels {
+        EaselsView(store: store, window: window)
+      } else {
+        NotesView(store: store, window: window)
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background { RoundedRectangle(cornerRadius: 6).fill(fill) }
+    .clipShape(RoundedRectangle(cornerRadius: 6))
   }
 }
 

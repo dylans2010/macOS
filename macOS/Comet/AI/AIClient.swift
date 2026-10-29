@@ -152,18 +152,19 @@ actor AIRuntime {
       throw AIFailure.notConfigured(EndpointPolicy.warning(for: base.absoluteString) ?? "This endpoint is not allowed.")
     }
     let key = AICredentials.load(settings.provider)
+    let headers = AIExtraHeaders.load(settings.provider)
     switch settings.provider {
     case .anthropic:
       guard let key else { throw AIFailure.notConfigured("Add an Anthropic API key in Settings → AI Features.") }
-      return try AnthropicAPI.request(request, settings: settings, key: key, stream: stream)
+      return try AnthropicAPI.request(request, settings: settings, key: key, stream: stream, headers: headers)
     case .gemini:
       guard let key else { throw AIFailure.notConfigured("Add a Gemini API key in Settings → AI Features.") }
-      return try GeminiAPI.request(request, settings: settings, key: key)
+      return try GeminiAPI.request(request, settings: settings, key: key, headers: headers)
     case .openai:
       guard let key else { throw AIFailure.notConfigured("Add an OpenAI API key in Settings → AI Features.") }
-      return try OpenAICompatible.request(request, settings: settings, key: key, stream: stream)
+      return try OpenAICompatible.request(request, settings: settings, key: key, stream: stream, headers: headers)
     case .ollama, .custom:
-      return try OpenAICompatible.request(request, settings: settings, key: key, stream: stream)
+      return try OpenAICompatible.request(request, settings: settings, key: key, stream: stream, headers: headers)
     case .apple:
       throw AIFailure.unsupportedProvider
     }

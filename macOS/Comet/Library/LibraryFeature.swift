@@ -35,9 +35,10 @@ struct LibraryFeature {
       }
     }
 
-    // Spaces covers the page; Notes and Easels sit beside it so the current webpage stays in view.
+    // Spaces is a library column that covers the page. Notes and Easels are workspace destinations:
+    // they replace the page instead of leaving it visible beside the library.
     var expandsOverPage: Bool { self == .spaces }
-    var sitsBesidePage: Bool { self == .notes || self == .easels }
+    var replacesPage: Bool { self == .notes || self == .easels }
   }
 
   @ObservableState

@@ -18,9 +18,88 @@ enum CredentialPage {
   }
 }
 
-enum PasswordFillScript {
-  static func source(username: String, password: String) -> String {
+enum PasswordFieldProbe {
+  // Isolated-world read of the focused control. It never reads or writes values.
+  static let script = """
+    (() => {
+      const classify = (el) => {
+        if (!el || !el.tagName || el.tagName !== "INPUT") return "";
+        const type = (el.getAttribute("type") || "text").toLowerCase();
+        const ac = (el.getAttribute("autocomplete") || "").toLowerCase();
+        const form = el.form;
+        const scope = form || document;
+        const hasPassword = !!scope.querySelector('input[type="password"]');
+        if (!hasPassword) return "";
+        if (type === "password" || ac === "current-password" || ac === "new-password") return "password";
+        if (type === "email" || ac === "username" || ac === "email") return "username";
+        return "";
+      };
+      const root = document.documentElement;
+      if (root && root.dataset.cometPasswordListener !== "1") {
+        root.dataset.cometPasswordListener = "1";
+        document.addEventListener("focusin", (event) => {
+          root.dataset.cometPasswordField = classify(event.target);
+        }, true);
+        document.addEventListener("focusout", () => {
+          root.dataset.cometPasswordField = "";
+        }, true);
+      }
+      const rectOf = (el) => {
+        if (!el || !el.getBoundingClientRect) return "";
+        const r = el.getBoundingClientRect();
+        if (!r || r.width < 2 || r.height < 2) return "";
+        return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)].join(",");
+      };
+      const pass = document.querySelector('input[type="password"]');
+      if (!pass) return "";
+      const focused = document.querySelector("input:focus");
+      let kind = classify(focused);
+      if (!kind && root) kind = root.dataset.cometPasswordField || "";
+      if (kind !== "password" && kind !== "username") kind = "present";
+      const scope = (focused && focused.form) || pass.form || document;
+      const user = scope.querySelector('input[autocomplete="username"], input[type="email"], input[name="username" i]');
+      return kind + "@" + rectOf(user) + "|" + rectOf(pass);
+    })()
     """
+
+  static func isLoginField(tag: String, type: String, autocomplete: String, formHasPassword: Bool) -> String {
+    guard tag.uppercased() == "INPUT", formHasPassword else { return "" }
+    let type = type.lowercased()
+    let autocomplete = autocomplete.lowercased()
+    if type == "password" || autocomplete == "current-password" || autocomplete == "new-password" { return "password" }
+    if type == "email" || autocomplete == "username" || autocomplete == "email" { return "username" }
+    return ""
+  }
+}
+
+enum PasswordFieldGeometry {
+  struct Target: Equatable {
+    var kind: String
+    var username: CGRect?
+    var password: CGRect?
+  }
+
+  static func parse(_ raw: String) -> Target? {
+    let pieces = raw.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+    let kind = pieces[0]
+    guard kind == "password" || kind == "username" || kind == "present" else { return nil }
+    guard pieces.count == 2 else { return Target(kind: kind, username: nil, password: nil) }
+    let boxes = pieces[1].split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+    return Target(kind: kind, username: rect(boxes.first ?? ""), password: boxes.count > 1 ? rect(boxes[1]) : nil)
+  }
+
+  private static func rect(_ text: String) -> CGRect? {
+    let numbers = text.split(separator: ",").compactMap { Double($0) }
+    guard numbers.count == 4, numbers[2] >= 2, numbers[3] >= 2 else { return nil }
+    return CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3])
+  }
+}
+
+enum PasswordFillScript {
+  static func source(username: String, password: String, moveFocus: Bool = true) -> String {
+    let focusName = moveFocus ? "name.focus();\n        " : ""
+    let focusField = moveFocus ? "field.focus();\n      " : ""
+    return """
     (() => {
       const username = \(json(username));
       const password = \(json(password));
@@ -29,16 +108,16 @@ enum PasswordFillScript {
       const root = field.form || document;
       const name = root.querySelector('input[autocomplete="username"], input[type="email"], input[name="username" i], input[type="text"]');
       if (name && username) {
-        name.focus();
-        name.value = username;
+        \(focusName)name.value = username;
         name.dispatchEvent(new Event("input", {bubbles:true}));
         name.dispatchEvent(new Event("change", {bubbles:true}));
       }
-      field.focus();
-      field.value = password;
-      field.dispatchEvent(new Event("input", {bubbles:true}));
-      field.dispatchEvent(new Event("change", {bubbles:true}));
-      return "filled";
+      if (password) {
+        \(focusField)field.value = password;
+        field.dispatchEvent(new Event("input", {bubbles:true}));
+        field.dispatchEvent(new Event("change", {bubbles:true}));
+      }
+      return password || username ? "filled" : "no-password-field";
     })()
     """
   }
@@ -114,34 +193,68 @@ final class SystemPasswordFill: NSObject, ASAuthorizationControllerDelegate, ASA
   private var page: URL?
   private var onFinish: ((String) -> Void)?
   private var report: ((String) -> Void)?
+  private var suggestions = false
+
+  var isRequestOpen: Bool { controller != nil }
 
   func start(tab: UUID, url: URL, finish: @escaping (String) -> Void) {
+    begin(tab: tab, url: url, suggestions: false, completion: finish)
+  }
+
+  // Focus-triggered path. Prefer credentials already on this Mac so the system UI behaves like a suggestion.
+  func suggest(tab: UUID, url: URL) async {
+    guard CredentialPage.origin(url) != nil, controller == nil else { return }
+    if AgentActivity.shared.phase == .executing { return }
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      begin(tab: tab, url: url, suggestions: true) { _ in
+        continuation.resume()
+      }
+    }
+  }
+
+  func cancel(tab: UUID) {
+    guard self.tab == tab else { return }
+    cancel()
+  }
+
+  func cancel() {
+    controller?.cancel()
+  }
+
+  private func begin(tab: UUID, url: URL, suggestions: Bool, completion: @escaping (String) -> Void) {
     guard CredentialPage.origin(url) != nil else {
-      finish("Passwords can only fill an http or https page.")
+      completion("Passwords can only fill an http or https page.")
       return
     }
     guard controller == nil else {
-      finish("A credential request is already open.")
+      completion("A credential request is already open.")
       return
     }
     self.tab = tab
     page = url
-    onFinish = finish
+    self.suggestions = suggestions
+    onFinish = completion
     let request = ASAuthorizationPasswordProvider().createRequest()
     let controller = ASAuthorizationController(authorizationRequests: [request])
     controller.delegate = self
     controller.presentationContextProvider = self
     self.controller = controller
-    controller.performRequests()
-  }
-
-  func cancel() {
-    controller?.cancel()
-    clear()
+    if suggestions {
+      controller.performRequests(options: .preferImmediatelyAvailableCredentials)
+    } else {
+      controller.performRequests()
+    }
   }
 
   func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-    NSApp.keyWindow ?? ASPresentationAnchor()
+    if let tab {
+      let host = NSApp.windows.first { window in
+        guard let store = (window.windowController as? WindowController)?.store else { return false }
+        return store.spaces.spaces.contains { space in space.tabs.contains { $0.id == tab } }
+      }
+      if let host { return host }
+    }
+    return NSApp.keyWindow ?? ASPresentationAnchor()
   }
 
   func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
@@ -176,14 +289,21 @@ final class SystemPasswordFill: NSObject, ASAuthorizationControllerDelegate, ASA
   }
 
   func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-    let finish = onFinish
-    clear()
+    let quiet = suggestions
     let code = (error as NSError).code
-    if code == ASAuthorizationError.canceled.rawValue {
-      finish?("Canceled.")
+    if quiet {
+      finish(code == ASAuthorizationError.canceled.rawValue ? "Canceled." : "")
+    } else if code == ASAuthorizationError.canceled.rawValue {
+      finish("Canceled.")
     } else {
-      finish?("macOS did not provide a password for this page.")
+      finish("macOS did not provide a password for this page.")
     }
+  }
+
+  private func finish(_ message: String) {
+    let callback = onFinish
+    clear()
+    callback?(message)
   }
 
   private func clear() {
@@ -191,6 +311,166 @@ final class SystemPasswordFill: NSObject, ASAuthorizationControllerDelegate, ASA
     tab = nil
     page = nil
     onFinish = nil
+    suggestions = false
+  }
+}
+
+// Chromium draws the page, so macOS will not attach Password AutoFill to those inputs.
+// Native username and password fields, with the system content types, sit over the login
+// controls. Suggestions come from macOS. Comet never reads the Passwords database.
+@MainActor
+final class PasswordAutoFillHost: NSObject, NSTextFieldDelegate {
+  static let shared = PasswordAutoFillHost()
+  private let username = NSTextField(frame: .zero)
+  private let password = NSSecureTextField(frame: .zero)
+  private var tab: UUID?
+  private var page: URL?
+  private var suppress = false
+  private var configured = false
+
+  func update(tab: UUID, url: URL, target: PasswordFieldGeometry.Target) {
+    guard CredentialPage.origin(url) != nil, !Engine.shared.incognitoTabs.contains(tab),
+      let web = Engine.shared.tabs[tab]?.view, let content = web.window?.contentView
+    else {
+      dismiss(tab: tab)
+      return
+    }
+    configure()
+    self.tab = tab
+    page = url
+    place(username, rect: target.username, web: web, content: content)
+    place(password, rect: target.password, web: web, content: content)
+    guard let window = web.window, window.isKeyWindow else { return }
+    if target.kind == "password", password.superview != nil, !isEditing(password, in: window) {
+      window.makeFirstResponder(password)
+    } else if target.kind == "username", username.superview != nil, !isEditing(username, in: window), !isEditing(password, in: window) {
+      window.makeFirstResponder(username)
+    }
+  }
+
+  func dismiss(tab: UUID) {
+    guard self.tab == nil || self.tab == tab else { return }
+    let window = username.window ?? password.window
+    if let window, isEditing(username, in: window) || isEditing(password, in: window) {
+      window.makeFirstResponder(nil)
+    }
+    suppress = true
+    username.stringValue = ""
+    password.stringValue = ""
+    suppress = false
+    username.removeFromSuperview()
+    password.removeFromSuperview()
+    self.tab = nil
+    page = nil
+  }
+
+  func controlTextDidChange(_ notification: Notification) {
+    guard !suppress, let tab, let page, let contents = Engine.shared.tabs[tab], let current = contents.url,
+      CredentialPage.sameOrigin(page, current)
+    else { return }
+    let user = text(of: username)
+    let secret = text(of: password)
+    guard !user.isEmpty || !secret.isEmpty else { return }
+    let script = PasswordFillScript.source(username: user, password: secret, moveFocus: false)
+    contents.evaluateJavaScript(script) { _ in }
+  }
+
+  private func text(of field: NSTextField) -> String {
+    if let editor = field.currentEditor() { return editor.string }
+    return field.stringValue
+  }
+
+  private func configure() {
+    guard !configured else { return }
+    configured = true
+    username.contentType = .username
+    password.contentType = .password
+    for field in [username, password as NSTextField] {
+      field.delegate = self
+      field.isBordered = false
+      field.isBezeled = false
+      field.drawsBackground = false
+      field.backgroundColor = .clear
+      field.font = .systemFont(ofSize: 13)
+      field.textColor = .labelColor
+      field.focusRingType = .none
+      field.lineBreakMode = .byClipping
+      field.cell?.wraps = false
+      field.cell?.isScrollable = true
+    }
+    username.placeholderString = ""
+    username.setAccessibilityLabel("Username")
+    password.setAccessibilityLabel("Password")
+  }
+
+  private func place(_ field: NSTextField, rect: CGRect?, web: NSView, content: NSView) {
+    guard let rect else {
+      field.isHidden = true
+      return
+    }
+    var local = NSRect(x: rect.origin.x, y: rect.origin.y, width: rect.width, height: rect.height)
+    if !web.isFlipped {
+      local.origin.y = web.bounds.height - rect.origin.y - rect.height
+    }
+    let inWindow = web.convert(local, to: nil)
+    field.frame = content.convert(inWindow, from: nil)
+    field.isHidden = false
+    if field.superview !== content { content.addSubview(field) }
+  }
+
+  private func isEditing(_ field: NSTextField, in window: NSWindow) -> Bool {
+    window.firstResponder === field || window.firstResponder === field.currentEditor()
+  }
+}
+
+@MainActor
+final class PasswordFieldMonitor {
+  static let shared = PasswordFieldMonitor()
+
+  func watch(token: String) async {
+    guard token != "hidden", token != "none" else { return }
+    let id = String(token.prefix(36))
+    guard let tab = UUID(uuidString: id), token.count > 37 else { return }
+    let raw = String(token.dropFirst(37))
+    guard let url = URL(string: raw) else { return }
+    await watch(tab: tab, url: url)
+  }
+
+  func watch(tab: UUID, url: URL) async {
+    defer {
+      SystemPasswordFill.shared.cancel(tab: tab)
+      PasswordAutoFillHost.shared.dismiss(tab: tab)
+    }
+    guard CredentialPage.origin(url) != nil else { return }
+    while !Task.isCancelled {
+      if AgentActivity.shared.phase == .executing || AgentActivity.shared.phase == .verifying {
+        PasswordAutoFillHost.shared.dismiss(tab: tab)
+        try? await Task.sleep(for: .milliseconds(400))
+        continue
+      }
+      let page = Engine.shared.tabs[tab]?.url ?? url
+      let raw = await probe(tab)
+      if let target = PasswordFieldGeometry.parse(raw) {
+        PasswordAutoFillHost.shared.update(tab: tab, url: page, target: target)
+      } else {
+        PasswordAutoFillHost.shared.dismiss(tab: tab)
+      }
+      try? await Task.sleep(for: .milliseconds(350))
+    }
+  }
+
+  private func probe(_ tab: UUID) async -> String {
+    await withCheckedContinuation { continuation in
+      guard let contents = Engine.shared.tabs[tab] else {
+        continuation.resume(returning: "")
+        return
+      }
+      contents.evaluateJavaScript(PasswordFieldProbe.script) { result in
+        Task { @MainActor in
+          continuation.resume(returning: result ?? "")
+        }
+      }
+    }
   }
 }
 
@@ -210,7 +490,7 @@ struct PasswordsPane: View {
         }
         Button("Ask macOS to Allow Passkeys", action: request)
         Text("Passwords").font(.system(size: 13, weight: .semibold)).padding(.top, 8)
-        Text("Fill Password asks macOS to show its own credential sheet for the front window. Comet does not read the Passwords app’s files. The form is not submitted. Chromium still keeps passwords you import, in the profile’s password manager.")
+        Text("A login page gets native username and password fields over its own fields, with macOS username and password content types, so Password AutoFill and other enabled providers can offer saved logins. Comet does not read the Passwords app’s files. The text you accept is written into that page’s form and is not submitted. Leaving the page clears the native fields. File → Fill Password still asks AuthenticationServices for its credential sheet. That sheet does not appear when macOS returns an error, which a debug build has done. Chrome’s own save bubble has no browser window here, so saving a new password is not shown.")
           .font(.system(size: 12)).foregroundStyle(.secondary)
         if let status { Text(status).font(.system(size: 12)).foregroundStyle(.secondary) }
       }

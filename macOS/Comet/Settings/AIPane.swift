@@ -8,6 +8,10 @@ struct AIPane: View {
   @State private var showsKey = false
   @State private var status: String?
   @State private var isSaving = false
+  @State private var discovered: [DiscoveredModel] = []
+  @State private var fetching = false
+  @State private var fetchTask: Task<Void, Never>?
+  @State private var headerDraft = ""
 
   var body: some View {
     ScrollView {
@@ -38,7 +42,16 @@ struct AIPane: View {
       .padding(.horizontal, 64)
     }
     .onAppear { loadKey() }
-    .onChange(of: settings.provider) { _, _ in loadKey() }
+    .onChange(of: settings.provider) { _, _ in
+      loadKey()
+      discovered = []
+      headerDraft = ""
+      fetchTask?.cancel()
+    }
+    .onChange(of: settings.baseURL) { _, _ in
+      discovered = []
+    }
+    .onDisappear { fetchTask?.cancel() }
   }
 
   private var providerCard: some View {
@@ -75,6 +88,10 @@ struct AIPane: View {
           .textFieldStyle(.roundedBorder)
           .frame(width: 220)
       }
+      modelDiscovery
+      if settings.provider != .apple {
+        headerEditor
+      }
       if settings.provider.needsAPIKey || settings.provider == .custom {
         SettingsRow("API Key") {
           HStack(spacing: 6) {
@@ -99,6 +116,88 @@ struct AIPane: View {
       }
     }
     .settingsCard()
+  }
+
+  @ViewBuilder private var modelDiscovery: some View {
+    if settings.provider == .apple {
+      Text("Apple Intelligence uses the on-device system model. There is no model list to fetch.")
+        .font(.system(size: 11)).foregroundStyle(.secondary)
+        .padding(.horizontal, 10).padding(.bottom, 8)
+    } else {
+      HStack(spacing: 8) {
+        if fetching {
+          Button("Cancel", action: cancelFetch)
+          ProgressView().controlSize(.small)
+        } else {
+          Button("Fetch Models", action: fetchModels).disabled(!canFetchModels)
+        }
+        if !discovered.isEmpty {
+          Picker("Fetched models", selection: stringBinding(\.model)) {
+            if !settings.model.isEmpty && !discovered.contains(where: { $0.id == settings.model }) {
+              Text("\(settings.model) (not in the last list)").tag(settings.model)
+            }
+            Text("Select a model").tag("")
+            ForEach(discovered) { model in
+              Text(model.pickerTitle).tag(model.id)
+            }
+          }
+          .labelsHidden()
+          .frame(width: 260)
+        }
+      }
+      .padding(.horizontal, 10)
+      .padding(.bottom, 6)
+      if let selected = discovered.first(where: { $0.id == settings.resolvedModel }) {
+        Text(capabilityLine(selected))
+          .font(.system(size: 11)).foregroundStyle(.secondary)
+          .padding(.horizontal, 10).padding(.bottom, 6)
+      }
+      Text("Fetch Models calls this endpoint’s model list. The choice is the model Comet Intelligence sends.")
+        .font(.system(size: 11)).foregroundStyle(.secondary)
+        .padding(.horizontal, 10).padding(.bottom, 8)
+    }
+  }
+
+  private func capabilityLine(_ model: DiscoveredModel) -> String {
+    if model.capabilitiesKnown {
+      let list = model.capabilities.isEmpty ? "none reported" : model.capabilities.joined(separator: ", ")
+      return "Capabilities: \(list)"
+    }
+    return "Capabilities unknown"
+  }
+
+  private var canFetchModels: Bool {
+    guard settings.provider != .apple, let base = settings.resolvedBaseURL else { return false }
+    guard EndpointPolicy.allows(base, allowInsecureHTTP: settings.allowInsecureHTTP || settings.provider == .ollama) else { return false }
+    if settings.provider.allowsEmptyKey { return true }
+    if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
+    return AICredentials.hasKey(settings.provider)
+  }
+
+  private var headerEditor: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text("Custom headers").font(.system(size: 12, weight: .semibold)).padding(.horizontal, 10)
+      Text("One Name: value per line. Saved in the Keychain for this service. Leave empty and save to remove them. Cookie and Host are ignored.")
+        .font(.system(size: 11)).foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+      TextEditor(text: $headerDraft)
+        .font(.system(size: 12, design: .monospaced))
+        .frame(minHeight: 56)
+        .padding(4)
+        .background(.black.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+        .padding(.horizontal, 10)
+        .accessibilityLabel("Custom headers")
+      HStack {
+        Button("Save Headers", action: saveHeaders)
+        if AIExtraHeaders.load(settings.provider).isEmpty {
+          Text("No custom headers saved").font(.system(size: 11)).foregroundStyle(.secondary)
+        } else {
+          Text("Custom headers are saved in the Keychain").font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+      }
+      .padding(.horizontal, 10)
+      .padding(.bottom, 10)
+    }
   }
 
   @ViewBuilder private var availabilityRow: some View {
@@ -178,7 +277,12 @@ struct AIPane: View {
   private var providerBinding: Binding<AIProviderKind> {
     Binding(
       get: { settings.provider },
-      set: { value in $settings.withLock { $0.provider = value } })
+      set: { value in
+        $settings.withLock {
+          if $0.provider != value { $0.model = "" }
+          $0.provider = value
+        }
+      })
   }
 
   private func stringBinding(_ keyPath: WritableKeyPath<AISettings, String>) -> Binding<String> {
@@ -208,6 +312,52 @@ struct AIPane: View {
   private func loadKey() {
     apiKey = ""
     showsKey = false
+  }
+
+  private func fetchModels() {
+    guard !fetching else { return }
+    let typed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    let key = typed.isEmpty ? AICredentials.load(settings.provider) : typed
+    let snapshot = settings
+    fetching = true
+    status = "Fetching models…"
+    fetchTask?.cancel()
+    fetchTask = Task {
+      defer { fetching = false }
+      do {
+        let models = try await ModelDiscovery.fetch(settings: snapshot, key: key)
+        if Task.isCancelled { return }
+        discovered = models
+        if !snapshot.model.isEmpty && !models.contains(where: { $0.id == snapshot.model }) {
+          status = "Fetched \(models.count) models. The selected model was not in the list."
+        } else {
+          status = "Fetched \(models.count) models."
+        }
+      } catch is CancellationError {
+        status = "Model discovery was cancelled."
+      } catch let error as AIFailure {
+        status = error.message
+      } catch {
+        status = "Model discovery failed."
+      }
+    }
+  }
+
+  private func cancelFetch() {
+    fetchTask?.cancel()
+    fetching = false
+    status = "Model discovery was cancelled."
+  }
+
+  private func saveHeaders() {
+    let headers = AIExtraHeaders.parse(headerDraft)
+    let statusCode = AIExtraHeaders.save(settings.provider, headers: headers)
+    if statusCode == errSecSuccess {
+      headerDraft = ""
+      status = headers.isEmpty ? "Custom headers removed." : "Custom headers saved in the Keychain."
+    } else {
+      status = "Custom headers could not be saved."
+    }
   }
 
   private func saveKey() {

@@ -94,6 +94,14 @@ struct AgentMessage: Identifiable, Equatable, Codable, Sendable {
   var text: String
 }
 
+extension SharedKey where Self == AppStorageKey<Double>.Default {
+  static var agentSidebarWidth: Self { Self[.appStorage("agentSidebarWidth"), default: 340] }
+}
+
+enum AgentSidebarMetrics {
+  static let widths = 280.0...480.0
+}
+
 enum AgentPhase: String, Equatable, Sendable {
   case idle, planning, inspecting, waiting, executing, verifying, paused, completed, failed, cancelled
 
@@ -123,8 +131,16 @@ final class AgentActivity {
   var url: URL?
   var title = ""
   var messages: [AgentMessage] = []
+  var liveReply = ""
   var draft = ""
   var pending: AgentCall?
+
+  init() {
+    let file = URL.dataDirectory.appending(path: "AgentTranscript.json")
+    if let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode([AgentMessage].self, from: data) {
+      messages = saved
+    }
+  }
   private var task: Task<Void, Never>?
   private var approval: CheckedContinuation<Bool, Never>?
   private var paused = false
@@ -151,11 +167,22 @@ final class AgentActivity {
   func clear() {
     stop()
     messages = []
+    liveReply = ""
     pending = nil
     phase = .idle
     detail = ""
     lastSignature = nil
     persist()
+  }
+
+  func retry() {
+    guard phase == .failed || phase == .cancelled else { return }
+    guard let question = messages.last(where: { $0.role == "user" })?.text, let tab, let url else { return }
+    stopped = false
+    paused = false
+    takenOver = false
+    task?.cancel()
+    task = Task { await self.run(question, tab: tab, url: url, title: title) }
   }
 
   func submit() {
@@ -201,6 +228,7 @@ final class AgentActivity {
     takenOver = false
     phase = .cancelled
     detail = "Stopped."
+    liveReply = ""
     task?.cancel()
     approval?.resume(returning: false)
     approval = nil
@@ -245,7 +273,7 @@ final class AgentActivity {
       if Task.isCancelled || stopped { phase = .cancelled; persist(); return }
       do { try await waitIfPaused() } catch { phase = stopped ? .cancelled : .paused; persist(); return }
       phase = .planning
-      detail = "Asking \(settings.provider.title)"
+      detail = "Asking \(settings.provider.title) · \(settings.resolvedModel)"
       let request = AIRequest.make(
         feature: .agent,
         system: settings.activeAgentPrompt + "\n\nTools: \(AgentProtocol.names.sorted().joined(separator: ", ")).",
@@ -253,15 +281,30 @@ final class AgentActivity {
         provenance: "agent:\(tab.uuidString.prefix(8))",
         maxTokens: 700,
         timeout: .seconds(45))
-      let response: AIResponse
+      var collected = ""
       do {
-        response = try await ai.complete(request)
+        for try await piece in ai.stream(request) {
+          if Task.isCancelled || stopped {
+            liveReply = ""
+            phase = .cancelled
+            persist()
+            return
+          }
+          collected += piece
+          liveReply = collected
+        }
       } catch {
+        liveReply = ""
         fail((error as? AIFailure)?.message ?? error.localizedDescription)
         return
       }
+      liveReply = ""
       if Task.isCancelled || stopped { phase = .cancelled; persist(); return }
-      switch AgentProtocol.parse(response.text) {
+      if collected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        fail("The provider returned an empty answer.")
+        return
+      }
+      switch AgentProtocol.parse(collected) {
       case let .answer(text):
         messages.append(AgentMessage(id: UUID(), role: "agent", text: text))
         phase = .completed
@@ -323,6 +366,7 @@ final class AgentActivity {
   }
 
   private func fail(_ text: String) {
+    liveReply = ""
     messages.append(AgentMessage(id: UUID(), role: "agent", text: text))
     phase = .failed
     detail = text

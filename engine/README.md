@@ -70,7 +70,14 @@ its only seam) and their visits reach History.
 
 The helpers' UI looks up a browser window and shows nothing without one.
 The bridge hands the page UI below to the shell instead; the password save
-and translate bubbles still do not appear.
+and translate bubbles still do not appear. macOS
+`performAutoFillAssistedRequests` is unavailable on macOS, and website fields
+are Chromium views, so the shell cannot attach Safari's inline AutoFill
+glyph. Focusing a login field asks AuthenticationServices
+(`ASAuthorizationPasswordProvider`, immediate credentials) through the
+existing `evaluateJavaScript` bridge. The system sheet fills the form in an
+isolated world. Chromium's own save bubble still has no browser window to
+host it, and Comet does not keep a second copy of those passwords.
 
 ## Page UI
 

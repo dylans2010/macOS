@@ -214,6 +214,7 @@ final class Engine: NSObject, @preconcurrency ECWebContentsDelegate {
   }
 
   func close(_ tab: UUID) {
+    SystemPasswordFill.shared.cancel(tab: tab)
     close(tab, keepingHistory: true)
   }
 
@@ -232,6 +233,7 @@ final class Engine: NSObject, @preconcurrency ECWebContentsDelegate {
   // Closes every tab before the engine destroys their web contents at quit.
   func closeAll() {
     isClosed = true
+    SystemPasswordFill.shared.cancel()
     for tab in Array(tabs.keys) {
       release(tab, keepingHistory: true)?.close()
     }
