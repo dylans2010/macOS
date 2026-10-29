@@ -55,6 +55,10 @@ struct StylesPane: View {
         .pickerStyle(.segmented)
         .frame(width: 220)
         Button("New", action: { add(StyleTemplate.named("Untitled Style", css: "")) })
+        Button("Open Site Panel") {
+          if let url = FrontBrowser.url { StyleSiteSession.shared.present(url: url) }
+        }
+        .disabled(FrontBrowser.url?.host() == nil)
         Button("Import", action: importStyles)
         Button("Export") { exportStyles(styles) }.disabled(styles.isEmpty)
       }
@@ -122,6 +126,7 @@ struct StylesPane: View {
       VStack(alignment: .leading, spacing: 8) {
         TextField("Name", text: binding(style.id, \.name)).textFieldStyle(.roundedBorder).accessibilityLabel("Style name")
         TextField("Description", text: binding(style.id, \.note)).textFieldStyle(.roundedBorder).accessibilityLabel("Style description")
+        appearance(style)
         TextField("Sites", text: hostsBinding(style.id)).textFieldStyle(.roundedBorder).accessibilityLabel("Sites")
         Text("example.com, *.example.com, or https://example.com/docs*. A blank list matches nothing.")
           .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -133,7 +138,7 @@ struct StylesPane: View {
         }
         Toggle("Enabled", isOn: boolBinding(style.id, \.enabled))
         Toggle("Allow this style’s JavaScript", isOn: boolBinding(style.id, \.scriptEnabled))
-        Text("JavaScript runs in an isolated world, only on the sites above, and only after you turn this on. It runs once per page.")
+        Text("JavaScript stays off until this is on. It runs in an isolated world, only on the sites above, once each time the page loads. It can change that page and its storage. It cannot use Comet’s passwords, keys, or other sites.")
           .font(.system(size: 11)).foregroundStyle(.secondary)
         if style.scriptEnabled {
           TextEditor(text: binding(style.id, \.script))
@@ -222,11 +227,59 @@ struct StylesPane: View {
     status = "Reverted."
   }
 
+  private func appearance(_ style: SiteStyle) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text("Appearance").font(.system(size: 12, weight: .semibold))
+      Toggle("Visual changes", isOn: boolBinding(style.id, \.visualsEnabled))
+      Picker("Theme", selection: themeBinding(style.id)) {
+        ForEach(StyleTheme.allCases) { Text($0.title).tag($0) }
+      }
+      .accessibilityLabel("Theme")
+      TextField("Color hex", text: hexBinding(style.id)).textFieldStyle(.roundedBorder).accessibilityLabel("Color hex")
+      Toggle("Recolor nested boxes", isOn: boolBinding(style.id, \.recolorBoxes))
+      adjustment("Contrast", style.id, \.contrast, 0.5...1.8)
+      adjustment("Brightness", style.id, \.brightness, 0.5...1.6)
+      adjustment("Saturation", style.id, \.saturation, 0...2)
+      Picker("Font", selection: fontBinding(style.id)) {
+        Text("Website").tag(Optional<String>.none)
+        ForEach(StyleFonts.available) { Text($0.name).tag(Optional($0.id)) }
+      }
+      .accessibilityLabel("Font")
+      adjustment("Text size", style.id, \.textScale, 0.75...1.75)
+      Picker("Case", selection: caseBinding(style.id)) {
+        ForEach(StyleTextCase.allCases) { Text($0.sample + " " + $0.title).tag($0) }
+      }
+      .accessibilityLabel("Letter case")
+      if !style.hidden.isEmpty {
+        ForEach(style.hidden) { rule in
+          HStack {
+            Text(rule.label).lineLimit(1).font(.system(size: 12))
+            Spacer()
+            Button("Restore") { StyleEditing.update(style.id) { $0.hidden.removeAll { $0.id == rule.id } } }
+          }
+        }
+        Button("Restore All Hidden") { StyleEditing.update(style.id) { $0.hidden = [] } }
+      }
+      Text("Background, text, and links follow the color and theme. Nested boxes change only when that option is on. Images and video are left alone.")
+        .font(.system(size: 11)).foregroundStyle(.secondary)
+    }
+  }
+
+  private func adjustment(_ title: String, _ id: SiteStyle.ID, _ key: WritableKeyPath<SiteStyle, Double>, _ range: ClosedRange<Double>) -> some View {
+    HStack {
+      Text(title).frame(width: 88, alignment: .leading)
+      Slider(value: doubleBinding(id, key), in: range, step: 0.05).accessibilityLabel(title)
+      Text(StyleLimits.percent(styles.first { $0.id == id }?[keyPath: key] ?? 1))
+        .font(.system(size: 11, design: .monospaced)).frame(width: 44)
+    }
+  }
+
   private func binding(_ id: SiteStyle.ID, _ key: WritableKeyPath<SiteStyle, String>) -> Binding<String> {
     Binding(get: { styles.first { $0.id == id }?[keyPath: key] ?? "" }, set: { value in
       $styles.withLock { styles in
         guard let index = styles.firstIndex(where: { $0.id == id }) else { return }
         styles[index][keyPath: key] = value
+        styles[index].modified = Date()
       }
       StyleEngine.applyAllSoon()
     })
@@ -237,9 +290,48 @@ struct StylesPane: View {
       $styles.withLock { styles in
         guard let index = styles.firstIndex(where: { $0.id == id }) else { return }
         styles[index][keyPath: key] = value
+        styles[index].modified = Date()
       }
       StyleEngine.applyAll()
     })
+  }
+
+  private func doubleBinding(_ id: SiteStyle.ID, _ key: WritableKeyPath<SiteStyle, Double>) -> Binding<Double> {
+    Binding(get: { styles.first { $0.id == id }?[keyPath: key] ?? 1 }, set: { value in
+      StyleEditing.update(id) { $0[keyPath: key] = value }
+    })
+  }
+
+  private func themeBinding(_ id: SiteStyle.ID) -> Binding<StyleTheme> {
+    Binding(get: { styles.first { $0.id == id }?.theme ?? .website }, set: { value in
+      StyleEditing.update(id) { $0.theme = value }
+    })
+  }
+
+  private func caseBinding(_ id: SiteStyle.ID) -> Binding<StyleTextCase> {
+    Binding(get: { styles.first { $0.id == id }?.textCase ?? .original }, set: { value in
+      StyleEditing.update(id) { $0.textCase = value }
+    })
+  }
+
+  private func fontBinding(_ id: SiteStyle.ID) -> Binding<String?> {
+    Binding(get: { styles.first { $0.id == id }?.fontID }, set: { value in
+      StyleEditing.update(id) { $0.fontID = value }
+    })
+  }
+
+  private func hexBinding(_ id: SiteStyle.ID) -> Binding<String> {
+    Binding(
+      get: { styles.first { $0.id == id }?.color?.rgb.hex ?? "" },
+      set: { value in
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+          StyleEditing.update(id) { $0.color = nil }
+          return
+        }
+        guard let color = StyleColor(hex: trimmed) else { return }
+        StyleEditing.update(id) { $0.color = color }
+      })
   }
 
   private func hostsBinding(_ id: SiteStyle.ID) -> Binding<String> {
@@ -250,6 +342,7 @@ struct StylesPane: View {
         $styles.withLock { styles in
           guard let index = styles.firstIndex(where: { $0.id == id }) else { return }
           styles[index].hosts = hosts
+          styles[index].modified = Date()
         }
         StyleEngine.applyAllSoon()
       })
@@ -263,6 +356,7 @@ struct StylesPane: View {
         $styles.withLock { styles in
           guard let index = styles.firstIndex(where: { $0.id == id }) else { return }
           styles[index].excludedPaths = paths
+          styles[index].modified = Date()
         }
         StyleEngine.applyAllSoon()
       })
@@ -318,83 +412,5 @@ struct StylesPane: View {
     } catch {
       status = "Export failed."
     }
-  }
-}
-
-struct StyleSitePanel: View {
-  @Bindable private var session = StyleSiteSession.shared
-  @Shared(.siteStyles) private var styles
-  @State private var diagnostics = StyleDiagnostics.shared
-
-  private var style: SiteStyle? { session.styleID.flatMap { id in styles.first { $0.id == id } } }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Text(session.url?.host() ?? "Styles").font(.system(size: 14, weight: .semibold))
-        Spacer()
-        Button("All Styles") { StyleSiteSession.openManager() }
-        Button { session.dismiss() } label: { Image(systemName: "xmark") }
-          .buttonStyle(.plain)
-          .accessibilityLabel("Close Styles")
-      }
-      if let style {
-        TextField("Name", text: binding(style.id, \.name)).textFieldStyle(.roundedBorder)
-        TextField("Description", text: binding(style.id, \.note)).textFieldStyle(.roundedBorder)
-        Toggle("Enabled on this site", isOn: boolBinding(style.id, \.enabled))
-        CSSEditor(text: binding(style.id, \.css)).frame(minHeight: 220)
-        let issues = CSSValidation.issues(in: style.css)
-        if !issues.isEmpty {
-          Text(issues.joined(separator: " ")).font(.system(size: 11)).foregroundStyle(.orange)
-        }
-        HStack {
-          Button("Readability") { applyTemplate(style.id, StyleTemplate.readability) }
-          Button("Width") { applyTemplate(style.id, StyleTemplate.width) }
-          Button("Quiet") { applyTemplate(style.id, StyleTemplate.focus) }
-          Spacer()
-          Button("Apply") { StyleEngine.applyAll() }
-        }
-        .font(.system(size: 12))
-        Text("Edits are stored and applied to this site. Other sites are unchanged.")
-          .font(.system(size: 11)).foregroundStyle(.secondary)
-        if let message = diagnostics.message {
-          Text(message).font(.system(size: 11)).foregroundStyle(.orange)
-        }
-      }
-    }
-    .padding(14)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("Styles for this site")
-  }
-
-  private func applyTemplate(_ id: SiteStyle.ID, _ css: String) {
-    $styles.withLock { styles in
-      guard let index = styles.firstIndex(where: { $0.id == id }) else { return }
-      styles[index].css = css
-      styles[index].enabled = true
-    }
-    StyleEngine.applyAll()
-  }
-
-  private func binding(_ id: SiteStyle.ID, _ key: WritableKeyPath<SiteStyle, String>) -> Binding<String> {
-    Binding(get: { styles.first { $0.id == id }?[keyPath: key] ?? "" }, set: { value in
-      $styles.withLock { styles in
-        guard let index = styles.firstIndex(where: { $0.id == id }) else { return }
-        styles[index][keyPath: key] = value
-      }
-      StyleEngine.applyAllSoon()
-    })
-  }
-
-  private func boolBinding(_ id: SiteStyle.ID, _ key: WritableKeyPath<SiteStyle, Bool>) -> Binding<Bool> {
-    Binding(get: { styles.first { $0.id == id }?[keyPath: key] ?? false }, set: { value in
-      $styles.withLock { styles in
-        guard let index = styles.firstIndex(where: { $0.id == id }) else { return }
-        styles[index][keyPath: key] = value
-      }
-      StyleEngine.applyAll()
-    })
   }
 }

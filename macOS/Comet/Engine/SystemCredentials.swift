@@ -2,7 +2,6 @@ import AppKit
 import AuthenticationServices
 import Foundation
 import Security
-import SwiftUI
 
 enum CredentialPage {
   static func origin(_ url: URL) -> String? {
@@ -222,12 +221,12 @@ final class SystemPasswordFill: NSObject, ASAuthorizationControllerDelegate, ASA
   }
 
   private func begin(tab: UUID, url: URL, suggestions: Bool, completion: @escaping (String) -> Void) {
-    guard CredentialPage.origin(url) != nil else {
-      completion("Passwords can only fill an http or https page.")
+    if let refusal = PasswordFillDecision.canRequest(privateTab: Engine.shared.incognitoTabs.contains(tab), url: url) {
+      completion(refusal)
       return
     }
     guard controller == nil else {
-      completion("A credential request is already open.")
+      completion(PasswordAutofillPolicy.busy)
       return
     }
     self.tab = tab
@@ -264,10 +263,13 @@ final class SystemPasswordFill: NSObject, ASAuthorizationControllerDelegate, ASA
       clear()
       return
     }
-    guard let tab, let page, let contents = Engine.shared.tabs[tab], let current = contents.url,
-      CredentialPage.sameOrigin(page, current)
-    else {
+    guard let tab, let page, let contents = Engine.shared.tabs[tab] else {
       finish?("The page changed, so the password was not filled.")
+      clear()
+      return
+    }
+    if let refusal = PasswordFillDecision.canApply(requested: page, current: contents.url) {
+      finish?(refusal)
       clear()
       return
     }
@@ -474,42 +476,3 @@ final class PasswordFieldMonitor {
   }
 }
 
-struct PasswordsPane: View {
-  @State private var passkeys = PasskeyAccess.current()
-  @State private var status: String?
-
-  var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 12) {
-        Text("Passkeys").font(.system(size: 13, weight: .semibold))
-        Text(passkeyExplanation).font(.system(size: 12)).foregroundStyle(.secondary)
-        LabeledContent("This build") { Text(PasskeyEntitlement.isPresent ? "Signed for passkeys" : "Not signed for passkeys") }
-        LabeledContent("macOS access") { Text(passkeys.title) }
-        if let configured = PasskeyAccess.deviceConfigured {
-          LabeledContent("This Mac") { Text(configured ? "Passkeys are set up" : "Passkeys are not set up") }
-        }
-        Button("Ask macOS to Allow Passkeys", action: request)
-        Text("Passwords").font(.system(size: 13, weight: .semibold)).padding(.top, 8)
-        Text("A login page gets native username and password fields over its own fields, with macOS username and password content types, so Password AutoFill and other enabled providers can offer saved logins. Comet does not read the Passwords app’s files. The text you accept is written into that page’s form and is not submitted. Leaving the page clears the native fields. File → Fill Password still asks AuthenticationServices for its credential sheet. That sheet does not appear when macOS returns an error, which a debug build has done. Chrome’s own save bubble has no browser window here, so saving a new password is not shown.")
-          .font(.system(size: 12)).foregroundStyle(.secondary)
-        if let status { Text(status).font(.system(size: 12)).foregroundStyle(.secondary) }
-      }
-      .padding(24)
-    }
-  }
-
-  private var passkeyExplanation: String {
-    if PasskeyEntitlement.isPresent {
-      "A website’s passkey request is handled by Chromium and presented as the macOS passkey sheet on that tab’s window. Private keys stay in the system. Third-party providers appear there when macOS offers them."
-    } else {
-      "Developer and unsigned builds omit Apple’s web-browser passkey entitlement, so macOS will not let this copy use iCloud passkeys. A release signed with that entitlement presents the system sheet. Comet does not invent passkey responses."
-    }
-  }
-
-  private func request() {
-    Task {
-      passkeys = await PasskeyAccess.request()
-      status = passkeys == .authorized ? "macOS allowed passkey access." : "macOS did not allow passkey access (\(passkeys.title))."
-    }
-  }
-}

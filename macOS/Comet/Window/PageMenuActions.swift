@@ -90,7 +90,7 @@ extension WindowController {
     store.send(.tab(.open(URL(string: "chrome://history/")!), in: store.spaces.selectedID))
   }
 
-  // The command bar's Manage Passwords: the profile's password manager in a tab.
+  // The profile's own password store, from imports. It is not Google Password Manager.
   @objc func managePasswords(_ sender: Any?) {
     store.send(.tab(.open(URL(string: "chrome://password-manager/passwords")!), in: store.spaces.selectedID))
   }

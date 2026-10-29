@@ -78,13 +78,11 @@ struct WindowView: View {
     .animation(Motion.layout, value: store.toast?.id)
     .overlay {
       if styleSite.isPresented {
-        ZStack {
-          Color.black.opacity(0.28).ignoresSafeArea()
-            .onTapGesture { StyleSiteSession.shared.dismiss() }
-          StyleSitePanel()
-            .frame(width: 460, height: 580)
-        }
-        .transition(.opacity)
+        StyleFloatingLayer(
+          offset: styleSite.offset, codeOffset: styleSite.codeOffset, styleMoved: styleSite.styleMoved, codeMoved: styleSite.codeMoved,
+          codeOpen: styleSite.codeOpen, contentHeight: styleSite.contentHeight
+        )
+        .ignoresSafeArea()
       }
     }
     .animation(Motion.layout, value: styleSite.isPresented)

@@ -43,7 +43,13 @@ func makeSettingsWindow(
         }
         openPage(url, profile)
       }))
-    case .passwords: ("Passwords", symbol("key"), AnyView(PasswordsPane()))
+    case .passwords:
+      ("Passwords and Autofill", symbol("key"), AnyView(PasswordsPane { url in
+        let profile = store.withState {
+          $0.windows.last { !$0.isIncognito }?.spaces.selected.profileID ?? $0.profiles.ids.first ?? UUID()
+        }
+        openPage(url, profile)
+      }))
     }
   }
   for (label, image, pane) in panes {

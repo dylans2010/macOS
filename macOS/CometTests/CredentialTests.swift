@@ -77,6 +77,38 @@ final class CredentialTests: XCTestCase {
     XCTAssertTrue(html.contains("autocomplete=\"current-password\""))
   }
 
+  func testGooglePasswordManagerIsNotReportedAsConnected() {
+    XCTAssertFalse(PasswordAutofillPolicy.googleSyncAvailable)
+    XCTAssertEqual(PasswordAutofillPolicy.googleStatus, "Not available")
+    XCTAssertEqual(PasswordAutofillPolicy.provider, "macOS Password AutoFill")
+    XCTAssertEqual(PasswordAutofillPolicy.googleManager.host(), "passwords.google.com")
+    XCTAssertTrue(PasswordAutofillPolicy.googleLimitation.contains("not connected"))
+    XCTAssertTrue(PasswordAutofillPolicy.googleLimitation.contains("does not give Comet"))
+    XCTAssertTrue(PasswordAutofillPolicy.csvWarning.contains("text file"))
+    XCTAssertTrue(PasswordAutofillPolicy.importSteps.joined(separator: " ").contains("will not open another app"))
+    XCTAssertFalse(PasswordAutofillPolicy.importSteps.joined(separator: " ").contains("password123"))
+    XCTAssertTrue(PasswordAutofillPolicy.storage.contains("not submitted"))
+  }
+
+  func testPrivateWindowsAndOtherOriginsCannotBeFilled() {
+    let login = URL(string: "https://example.com/login")!
+    XCTAssertEqual(PasswordFillDecision.canRequest(privateTab: true, url: login), PasswordAutofillPolicy.privateWindow)
+    XCTAssertNil(PasswordFillDecision.canRequest(privateTab: false, url: login))
+    XCTAssertEqual(
+      PasswordFillDecision.canRequest(privateTab: false, url: URL(string: "file:///tmp/login.html")!),
+      PasswordAutofillPolicy.webOnly)
+    XCTAssertEqual(
+      PasswordFillDecision.canApply(requested: login, current: URL(string: "https://evil.example/login")!),
+      PasswordAutofillPolicy.pageChanged)
+    XCTAssertEqual(PasswordFillDecision.canApply(requested: login, current: nil), PasswordAutofillPolicy.pageChanged)
+    XCTAssertNil(PasswordFillDecision.canApply(requested: login, current: URL(string: "https://example.com/account")!))
+  }
+
+  func testPageExtractOmitsFormFields() {
+    XCTAssertTrue(PageExtractor.script.contains("input, textarea, select"))
+    XCTAssertFalse(PageExtractor.script.contains("input.value"))
+  }
+
   func testLivePasskeyAuthorizationIsOneOfTheSystemStates() {
     let state = PasskeyAccess.current()
     XCTAssertTrue([PasskeyAuthorization.authorized, .denied, .notDetermined, .unavailable].contains(state))

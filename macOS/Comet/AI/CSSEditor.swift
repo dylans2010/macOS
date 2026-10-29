@@ -1,28 +1,36 @@
 import AppKit
 import SwiftUI
 
-// A monospaced CSS editor with line numbers, undo, and lightweight highlighting.
+// A monospaced CSS or JavaScript editor with line numbers, undo, and lightweight highlighting.
 struct CSSEditor: NSViewRepresentable {
+  enum Language { case css, javascript }
+
   @Binding var text: String
+  var language: Language = .css
+  var label: String = "CSS"
   var onEdit: () -> Void = {}
 
   func makeCoordinator() -> Coordinator { Coordinator(self) }
 
   func makeNSView(context: Context) -> CSSEditorContainer {
     let view = CSSEditorContainer()
+    view.language = language
+    view.textView.setAccessibilityLabel(label)
     view.textView.delegate = context.coordinator
     view.textView.string = text
     view.relayoutNumbers()
-    CSSHighlight.apply(to: view.textView)
+    CSSHighlight.apply(to: view.textView, language: language)
     return view
   }
 
   func updateNSView(_ view: CSSEditorContainer, context: Context) {
     context.coordinator.parent = self
+    view.language = language
+    view.textView.setAccessibilityLabel(label)
     guard view.textView.string != text else { return }
     let selected = view.textView.selectedRange()
     view.textView.string = text
-    CSSHighlight.apply(to: view.textView)
+    CSSHighlight.apply(to: view.textView, language: language)
     view.relayoutNumbers()
     let end = (text as NSString).length
     view.textView.setSelectedRange(NSRange(location: min(selected.location, end), length: 0))
@@ -42,14 +50,14 @@ struct CSSEditor: NSViewRepresentable {
         parent.text = view.string
         parent.onEdit()
         isApplying = true
-        CSSHighlight.apply(to: view)
+        CSSHighlight.apply(to: view, language: parent.language)
         isApplying = false
         return
       }
       parent.text = view.string
       parent.onEdit()
       isApplying = true
-      CSSHighlight.apply(to: view)
+      CSSHighlight.apply(to: view, language: container.language)
       container.relayoutNumbers()
       isApplying = false
     }
@@ -60,6 +68,7 @@ final class CSSEditorContainer: NSView {
   let gutter = NSTextView()
   let scroll = NSScrollView()
   let textView = NSTextView()
+  var language: CSSEditor.Language = .css
   private var observer: NSObjectProtocol?
 
   override init(frame frameRect: NSRect) {
@@ -152,7 +161,7 @@ final class CSSEditorContainer: NSView {
 
 @MainActor
 private enum CSSHighlight {
-  static func apply(to textView: NSTextView) {
+  static func apply(to textView: NSTextView, language: CSSEditor.Language) {
     guard let storage = textView.textStorage else { return }
     let selected = textView.selectedRange()
     let full = NSRange(location: 0, length: storage.length)
@@ -171,6 +180,15 @@ private enum CSSHighlight {
         continue
       }
       let ch = string.substring(with: NSRange(location: index, length: 1))
+      if language == .javascript, ch == "/", index + 1 < string.length,
+        string.substring(with: NSRange(location: index + 1, length: 1)) == "/"
+      {
+        let end = string.range(of: "\n", range: NSRange(location: index, length: string.length - index))
+        let range = NSRange(location: index, length: (end.location == NSNotFound ? string.length : end.location) - index)
+        storage.addAttributes([.foregroundColor: NSColor.secondaryLabelColor], range: range)
+        index = NSMaxRange(range)
+        continue
+      }
       if ch == "/" && index + 1 < string.length && string.substring(with: NSRange(location: index + 1, length: 1)) == "*" {
         comment = true
         continue
@@ -187,7 +205,29 @@ private enum CSSHighlight {
       }
       index += 1
     }
+    if language == .javascript {
+      let words = ["let", "const", "var", "function", "return", "if", "else", "for", "while", "try", "catch", "new", "await"]
+      for word in words {
+        var search = NSRange(location: 0, length: string.length)
+        while search.length > 0 {
+          let found = string.range(of: word, options: [], range: search)
+          if found.location == NSNotFound { break }
+          let before = found.location == 0 || !Self.identifier(string.character(at: found.location - 1))
+          let afterIndex = found.location + found.length
+          let after = afterIndex >= string.length || !Self.identifier(string.character(at: afterIndex))
+          if before && after {
+            storage.addAttributes([.foregroundColor: NSColor.systemPurple], range: found)
+          }
+          let next = NSMaxRange(found)
+          search = NSRange(location: next, length: string.length - next)
+        }
+      }
+    }
     storage.endEditing()
     textView.setSelectedRange(selected)
+  }
+
+  private static func identifier(_ value: unichar) -> Bool {
+    (value >= 48 && value <= 57) || (value >= 65 && value <= 90) || (value >= 97 && value <= 122) || value == 95
   }
 }
