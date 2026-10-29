@@ -1,8 +1,44 @@
+import ComposableArchitecture
 import XCTest
 
 @testable import Comet
 
 final class LibraryFeatureTests: XCTestCase {
+  @MainActor
+  func testNotesAndEaselsAreOfferedAsLibraryCommands() {
+    XCTAssertEqual(AppCommands.all.first { $0.action == "openLibrary:" && $0.tag == 2 }?.title, "View Notes…")
+    XCTAssertEqual(AppCommands.all.first { $0.action == "openLibrary:" && $0.tag == 5 }?.title, "View Easels…")
+    XCTAssertEqual(AppCommands.all.first { $0.action == "newNote:" }?.shortcut, "⇧⌘O")
+    let shortcuts = AppCommands.all.map(\.shortcut).filter { !$0.isEmpty }
+    XCTAssertEqual(shortcuts.count, Set(shortcuts).count)
+  }
+
+  func testPaneTagsStayStableForMenuItems() {
+    XCTAssertEqual(LibraryFeature.Pane.downloads.rawValue, 0)
+    XCTAssertEqual(LibraryFeature.Pane.spaces.rawValue, 1)
+    XCTAssertEqual(LibraryFeature.Pane.notes.rawValue, 2)
+    XCTAssertEqual(LibraryFeature.Pane.archive.rawValue, 3)
+    XCTAssertEqual(LibraryFeature.Pane.media.rawValue, 4)
+    XCTAssertEqual(LibraryFeature.Pane.easels.rawValue, 5)
+  }
+
+  @MainActor
+  func testSelectingAPaneClearsTheQuery() async {
+    let store = TestStore(initialState: LibraryFeature.State(pane: .downloads, query: "pdf")) {
+      LibraryFeature()
+    }
+    await store.send(.select(.notes)) {
+      $0.pane = .notes
+      $0.query = ""
+    }
+    await store.send(.select(.easels)) {
+      $0.pane = .easels
+    }
+    await store.send(.select(.downloads)) {
+      $0.pane = .downloads
+    }
+  }
+
   private func download(_ name: String) -> Download {
     Download(
       id: name, url: URL(string: "https://comet.fish/\(name)")!, fileURL: URL(filePath: "/tmp/\(name)"),

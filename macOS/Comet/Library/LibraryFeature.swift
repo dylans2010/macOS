@@ -8,8 +8,36 @@ struct LibraryFeature {
   enum Pane: Int {
     case downloads = 0
     case spaces = 1
+    case notes = 2
     case archive = 3
     case media = 4
+    case easels = 5
+
+    var title: String {
+      switch self {
+      case .downloads: "Downloads"
+      case .spaces: "Spaces"
+      case .notes: "Notes"
+      case .archive: "Archived Tabs"
+      case .media: "Media"
+      case .easels: "Easels"
+      }
+    }
+
+    var symbol: String {
+      switch self {
+      case .downloads: "arrow.down.circle"
+      case .spaces: "rectangle.on.rectangle.angled"
+      case .notes: "note.text"
+      case .archive: "archivebox"
+      case .media: "photo.on.rectangle.angled"
+      case .easels: "square.grid.2x2"
+      }
+    }
+
+    // Spaces covers the page; Notes and Easels sit beside it so the current webpage stays in view.
+    var expandsOverPage: Bool { self == .spaces }
+    var sitsBesidePage: Bool { self == .notes || self == .easels }
   }
 
   @ObservableState
@@ -74,7 +102,7 @@ struct LibraryFeature {
     }
   }
 
-  private static func groups<T>(
+  static func groups<T>(
     _ items: [T], date: (T) -> Date, now: Date, calendar: Calendar
   ) -> [(title: String, items: [T])] {
     var groups: [(title: String, items: [T])] = []

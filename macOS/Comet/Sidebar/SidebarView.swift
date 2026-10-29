@@ -636,6 +636,7 @@ struct SidebarView: View {
           store.send(.showToast("Copied Current URL"))
         }
         Button("Take a Capture") { NSApp.sendAction(#selector(WindowController.capture(_:)), to: nil, from: nil) }
+        Button("New Note from Page") { NSApp.sendAction(#selector(WindowController.newNoteFromPage(_:)), to: nil, from: nil) }
         ShareLink("Share Page", item: url)
       }
     }

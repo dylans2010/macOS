@@ -95,13 +95,15 @@ struct WindowView: View {
   }
 
   @ViewBuilder private func layered(_ size: CGSize, isFloating: Bool, background: LinearGradient) -> some View {
-    // The Spaces pane covers all of the window but a sliver of the page.
-    let open = store.library?.pane == .spaces ? size.width - 46 : WindowFeature.libraryWidth
+    // The Spaces pane covers all of the window but a sliver of the page. Notes and Easels sit beside it.
+    let pane = store.library?.pane ?? .media
+    let open = WindowFeature.libraryOpenWidth(pane, windowWidth: size.width)
     let side: CGFloat = isFloating ? 0 : store.sidebar.width
     let shown = libraryShown(span: isFloating ? WindowFeature.libraryWidth : side)
     let push = shown * max(open - side, 0)
-    // The page narrows only as far as beside the Library's column; past that it slides off the window's edge.
-    let narrow = min(push, max(WindowFeature.libraryWidth - side, 0))
+    // The page narrows only as far as beside the Library's column, except Notes and Easels, which keep the page
+    // in view by shrinking it to the remaining width.
+    let narrow = min(push, WindowFeature.libraryPageNarrow(pane, open: open, sidebar: side))
     ZStack(alignment: .topLeading) {
       browser(isFloating: isFloating, background: background, library: (shown: shown, push: push))
     }

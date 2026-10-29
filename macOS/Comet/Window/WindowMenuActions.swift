@@ -280,10 +280,12 @@ extension WindowController: NSMenuItemValidation {
     case #selector(toggleLibrary(_:)):
       item.title = store.isLibraryOpen ? "Close Library" : "Open Library…"
       return true
-    case #selector(openLibrary(_:)) where [0, 4].contains(item.tag):
-      let name = item.tag == 0 ? "Downloads" : "Media"
+    case #selector(openLibrary(_:)) where [0, 2, 4, 5].contains(item.tag):
+      let name = [0: "Downloads", 2: "Notes", 4: "Media", 5: "Easels"][item.tag]!
       item.title = store.isLibraryOpen && store.library?.pane.rawValue == item.tag ? "Hide \(name)" : "View \(name)…"
       return true
+    case #selector(newNoteFromPage(_:)):
+      return store.spaces.selected.selectedTab != nil
     case #selector(toggleSidebarDocking(_:)):
       item.title = store.sidebar.isFloating ? "Show Sidebar" : "Hide Sidebar"
       return true

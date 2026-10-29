@@ -54,27 +54,30 @@ struct LibraryView: View {
             archiveList
           }
         }
+      case .notes:
+        NotesView(store: store, window: window)
+      case .easels:
+        EaselsView(store: store, window: window)
       }
     }
     .foregroundStyle(Theme.primaryText)
   }
 
   private var rail: some View {
-    VStack(spacing: 20) {
-      TrafficLights().padding(.leading, -5).frame(maxWidth: .infinity, alignment: .leading).frame(height: 54).padding(.bottom, 34)
-      RailItem(title: "Media", systemName: "photo.on.rectangle.angled", isSelected: store.pane == .media) {
-        store.send(.select(.media))
+    VStack(spacing: 12) {
+      TrafficLights().padding(.leading, -5).frame(maxWidth: .infinity, alignment: .leading).frame(height: 54).padding(.bottom, 22)
+      ScrollView {
+        VStack(spacing: 12) {
+          ForEach(Self.railPanes, id: \.self) { pane in
+            RailItem(title: pane.title, systemName: pane.symbol, isSelected: store.pane == pane) {
+              store.send(.select(pane))
+            }
+          }
+        }
       }
-      RailItem(title: "Downloads", systemName: "arrow.down.circle", isSelected: store.pane == .downloads) {
-        store.send(.select(.downloads))
-      }
-      RailItem(title: "Spaces", systemName: "rectangle.on.rectangle.angled", isSelected: store.pane == .spaces) {
-        store.send(.select(.spaces))
-      }
-      RailItem(title: "Archived Tabs", systemName: "archivebox", isSelected: store.pane == .archive) {
-        store.send(.select(.archive))
-      }
-      Spacer()
+      .scrollIndicators(.never)
+      .scrollBounceBehavior(.basedOnSize)
+      Spacer(minLength: 0)
       HStack {
         RailButton(systemName: "arrow.left", help: "Back") { window.send(.toggleLibrary) }
         Spacer()
@@ -85,6 +88,10 @@ struct LibraryView: View {
     }
     .padding(.horizontal, 8)
   }
+
+  // Media, Downloads, Notes and Easels, then Spaces and the archive: the original four keep their places,
+  // and the two new items sit with the other library documents.
+  private static let railPanes: [LibraryFeature.Pane] = [.media, .downloads, .notes, .easels, .spaces, .archive]
 
   private func column<Content: View>(
     placeholder: String, hasFilter: Bool, @ViewBuilder content: () -> Content
@@ -245,7 +252,7 @@ private struct RailItem: View {
       VStack(spacing: 6) {
         // The open pane's icon is filled in the accent, its inner glyph white. The archive box's fill has
         // one layer, so it is all accent.
-        Image(systemName: systemName).font(.system(size: 20)).symbolEffect(.bounce, value: bounces)
+        Image(systemName: systemName).font(.system(size: 18)).symbolEffect(.bounce, value: bounces)
           .symbolVariant(isSelected ? .fill : .none)
           .symbolRenderingMode(isSelected ? .palette : .monochrome)
           .foregroundStyle(
@@ -255,12 +262,13 @@ private struct RailItem: View {
           .foregroundStyle(isSelected ? Theme.primaryText : Theme.secondaryText)
       }
       .frame(maxWidth: .infinity)
-      .frame(height: 80)
+      .frame(height: 72)
       .background(
         isSelected ? Theme.fill : isHovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 10))
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
     .onHover {
       isHovering = $0
       if $0 { bounces += 1 }

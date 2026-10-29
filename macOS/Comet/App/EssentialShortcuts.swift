@@ -51,6 +51,7 @@ private struct EssentialShortcuts: View {
     ("Command Bar and Windows", [
       ("Open Command Bar", "openLocation:"), ("Add Split View", "newSplit:"),
       ("New Little Comet Window", "newLittleComet:"), ("View Library", "toggleLibrary:"), ("Capture", "capture:"),
+      ("New Note", "newNote:"),
     ]),
   ]
 
@@ -75,7 +76,7 @@ private struct EssentialShortcuts: View {
       }
     }
     .formStyle(.grouped)
-    .frame(width: 420, height: 560)
+    .frame(width: 420, height: 600)
   }
 
   private static func items(in menu: NSMenu?) -> [NSMenuItem] {

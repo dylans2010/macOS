@@ -367,6 +367,22 @@ final class WindowController: NSWindowController, NSWindowDelegate {
     store.send(.toggleLibrary)
   }
 
+  @objc func newNote(_ sender: Any?) {
+    store.send(.showLibrary(.notes))
+    Notes.create()
+  }
+
+  @objc func newNoteFromPage(_ sender: Any?) {
+    let tab = store.isIncognito ? nil : store.spaces.selected.selectedTab
+    store.send(.showLibrary(.notes))
+    Notes.create(sourceURL: tab?.url, sourceTitle: tab?.displayTitle)
+  }
+
+  @objc func newEasel(_ sender: Any?) {
+    store.send(.showLibrary(.easels))
+    Easels.create()
+  }
+
   @objc func importBrowserData(_ sender: Any?) {
     store.send(.showImport)
   }
