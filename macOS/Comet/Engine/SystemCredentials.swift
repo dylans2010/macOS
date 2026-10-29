@@ -542,6 +542,11 @@ final class PasswordFieldMonitor {
       } else {
         PasswordAutoFillHost.shared.dismiss(tab: tab)
       }
+      // Security's save prompt: the monitor already polls this tab, so
+      // the submit listener's pending credential is collected here
+      // instead of a second polling loop. The macOS AutoFill host above
+      // is untouched by this call.
+      await CSecuritySaveIntegration.poll(tab: tab, pageURL: page)
       try? await Task.sleep(for: .milliseconds(350))
     }
   }

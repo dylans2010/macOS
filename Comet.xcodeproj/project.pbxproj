@@ -42,6 +42,13 @@
 		2AEE2C5F48AC9038181AC4DC /* CometIntelligenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C127A09FAB8EB7617998BBE /* CometIntelligenceTests.swift */; };
 		2B61C33728AEC99E37638B54 /* AICredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F301FD8F68CEB954F2C946 /* AICredentials.swift */; };
 		2BD679BCBDF016C14F5D3E4D /* SystemCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DAC167B19A7BB3A0B255B8 /* SystemCredentials.swift */; };
+		2B9A464A5E89ED526DE23DB2 /* CSecurityBrowserIntegration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38F75D6F5AE48F58926CB0BA /* CSecurityBrowserIntegration.swift */; };
+		1C0A6EA4830E307B13886AF2 /* CSecurityCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B51ED6C2D1CC68E8E771D6D /* CSecurityCredential.swift */; };
+		93FCCFB84392875A0EA69536 /* CSecurityCSV.swift in Sources */ = {isa = PBXBuildFile; fileRef = E73F0E406433A08980935608 /* CSecurityCSV.swift */; };
+		01470797FC624E9E0B12E3C9 /* CSecurityPasswordGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E844F130C7CA7EF7F5586D9 /* CSecurityPasswordGenerator.swift */; };
+		2812C6F89B708778A47BE79D /* CSecurityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F25EDC4763BD7BBCE618470 /* CSecurityService.swift */; };
+		4F417B374CB6925B79E75955 /* CSecurityServiceUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54DBF68FC9CBFB95E0C7F1C1 /* CSecurityServiceUI.swift */; };
+		7AB128A6E1919242F7D67C26 /* CSecurityVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9FA6FF9934263E78FFA6080 /* CSecurityVault.swift */; };
 		2C924DC92017C4E8C518D12F /* Agent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A12A5EB0831AF2272654EE /* Agent.swift */; };
 		2CB11A64C8C2EA304038FC4C /* Engine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A153C3476705A6A46C133C1C /* Engine.swift */; };
 		2D2979C26BB3B1FD5CEF28BD /* ImportFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 762700A676962A790987E38C /* ImportFeatureTests.swift */; };
@@ -144,6 +151,7 @@
 		B02C9D8D505880A7EF9F03C1 /* AppIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CE482B56CA43ACD009F8EFA /* AppIcon.swift */; };
 		B3DB41AE78EFFD0FDD5131BE /* ImportedFavicons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DFE4D2E24D01C8F04EFE54E /* ImportedFavicons.swift */; };
 		B3FDEA88ABFA35981BCCCAA1 /* CredentialTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF11B243635589D08A4C45A1 /* CredentialTests.swift */; };
+		E0849E988DFB7C84620FCAC7 /* CSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 432E041E3DFFEBC12D624D18 /* CSecurityTests.swift */; };
 		B544A699EB03F87DA42702AD /* Readability-0.6.0.js in Resources */ = {isa = PBXBuildFile; fileRef = CF2B2C1FE212C5DE0F5F58B8 /* Readability-0.6.0.js */; };
 		B6321AD98C00E6B14AC180C6 /* DownloadAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC9AFC804405C087D5E04CFD /* DownloadAI.swift */; };
 		B725B8399671339D45D747FB /* SidebarBanners.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD627745EF03FBE62CF57C0B /* SidebarBanners.swift */; };
@@ -343,6 +351,13 @@
 		5D893346BA390E88FC0FC0A3 /* SplitRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplitRow.swift; sourceTree = "<group>"; };
 		5E4979310ACFEBD3B81DDF75 /* ArcImportFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArcImportFeature.swift; sourceTree = "<group>"; };
 		65DAC167B19A7BB3A0B255B8 /* SystemCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemCredentials.swift; sourceTree = "<group>"; };
+		38F75D6F5AE48F58926CB0BA /* CSecurityBrowserIntegration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSecurityBrowserIntegration.swift; sourceTree = "<group>"; };
+		6B51ED6C2D1CC68E8E771D6D /* CSecurityCredential.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSecurityCredential.swift; sourceTree = "<group>"; };
+		E73F0E406433A08980935608 /* CSecurityCSV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSecurityCSV.swift; sourceTree = "<group>"; };
+		9E844F130C7CA7EF7F5586D9 /* CSecurityPasswordGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSecurityPasswordGenerator.swift; sourceTree = "<group>"; };
+		7F25EDC4763BD7BBCE618470 /* CSecurityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSecurityService.swift; sourceTree = "<group>"; };
+		54DBF68FC9CBFB95E0C7F1C1 /* CSecurityServiceUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSecurityServiceUI.swift; sourceTree = "<group>"; };
+		E9FA6FF9934263E78FFA6080 /* CSecurityVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSecurityVault.swift; sourceTree = "<group>"; };
 		66FD3D8B0EB3E5F7A6FAD19D /* WindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowView.swift; sourceTree = "<group>"; };
 		67396FE7D1CE6FCBBCF94496 /* SpaceLinking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceLinking.swift; sourceTree = "<group>"; };
 		679CD7AB5705D70A843F51D2 /* KeyBindings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyBindings.swift; sourceTree = "<group>"; };
@@ -410,6 +425,7 @@
 		BC436EFD861E63B113E6F2D5 /* CommandBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandBarView.swift; sourceTree = "<group>"; };
 		BEDEFD162B1B2DC1F5341B27 /* UpdatePillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatePillTests.swift; sourceTree = "<group>"; };
 		BF11B243635589D08A4C45A1 /* CredentialTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialTests.swift; sourceTree = "<group>"; };
+		432E041E3DFFEBC12D624D18 /* CSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSecurityTests.swift; sourceTree = "<group>"; };
 		BF41FC4B3E6E2382CCE9D6EE /* UpdatePill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatePill.swift; sourceTree = "<group>"; };
 		BF43920536042A582B7A3090 /* TabsFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabsFeatureTests.swift; sourceTree = "<group>"; };
 		BFD96EF0CA4E9DD583169E3D /* WindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowController.swift; sourceTree = "<group>"; };
@@ -504,6 +520,7 @@
 				68038ECC5FA9BEE93089040D /* LittleComet */,
 				A0F5DAE5C642209EBA886197 /* Persistence */,
 				B3E918404B02C33FA4904574 /* Productivity */,
+				0FFF5AB9C1F0EB9D1A60039F /* Security */,
 				C574237025C27647EF89BC82 /* Settings */,
 				F0C291A0A3324591E59B7DCB /* Sidebar */,
 				62A480A972E8C3FEAF3606B5 /* Spaces */,
@@ -644,6 +661,20 @@
 			path = Engine;
 			sourceTree = "<group>";
 		};
+		0FFF5AB9C1F0EB9D1A60039F /* Security */ = {
+			isa = PBXGroup;
+			children = (
+				38F75D6F5AE48F58926CB0BA /* CSecurityBrowserIntegration.swift */,
+				6B51ED6C2D1CC68E8E771D6D /* CSecurityCredential.swift */,
+				E73F0E406433A08980935608 /* CSecurityCSV.swift */,
+				9E844F130C7CA7EF7F5586D9 /* CSecurityPasswordGenerator.swift */,
+				7F25EDC4763BD7BBCE618470 /* CSecurityService.swift */,
+				54DBF68FC9CBFB95E0C7F1C1 /* CSecurityServiceUI.swift */,
+				E9FA6FF9934263E78FFA6080 /* CSecurityVault.swift */,
+			);
+			path = Security;
+			sourceTree = "<group>";
+		};
 		68038ECC5FA9BEE93089040D /* LittleComet */ = {
 			isa = PBXGroup;
 			children = (
@@ -672,6 +703,7 @@
 				A762398E6B77242E65BF52C5 /* BrowserImportTests.swift */,
 				0C127A09FAB8EB7617998BBE /* CometIntelligenceTests.swift */,
 				BF11B243635589D08A4C45A1 /* CredentialTests.swift */,
+				432E041E3DFFEBC12D624D18 /* CSecurityTests.swift */,
 				E25179DE33B26F36E3B8426B /* DownloadNameTests.swift */,
 				BBB2F3A29E7C22428CA2AA0A /* DownloadsFeatureTests.swift */,
 				F81631F83D0AC3FFC9A8A391 /* EaselsTests.swift */,
@@ -1198,6 +1230,13 @@
 				903974933619CCBFB3BD5313 /* Styles.swift in Sources */,
 				ACF0CEE700E640357074DBC0 /* StylesUI.swift in Sources */,
 				2BD679BCBDF016C14F5D3E4D /* SystemCredentials.swift in Sources */,
+				2B9A464A5E89ED526DE23DB2 /* CSecurityBrowserIntegration.swift in Sources */,
+				1C0A6EA4830E307B13886AF2 /* CSecurityCredential.swift in Sources */,
+				93FCCFB84392875A0EA69536 /* CSecurityCSV.swift in Sources */,
+				01470797FC624E9E0B12E3C9 /* CSecurityPasswordGenerator.swift in Sources */,
+				2812C6F89B708778A47BE79D /* CSecurityService.swift in Sources */,
+				4F417B374CB6925B79E75955 /* CSecurityServiceUI.swift in Sources */,
+				7AB128A6E1919242F7D67C26 /* CSecurityVault.swift in Sources */,
 				130955DB29935DDFA0CEC07E /* TabGroups.swift in Sources */,
 				F65B6C6EC68A872698CCBCE0 /* TabSwitcher.swift in Sources */,
 				E1539AC99DE9D9227B14F96B /* TabsFeature.swift in Sources */,
@@ -1241,6 +1280,7 @@
 				1B76C63FB9C4668FF08F8828 /* BrowserImportTests.swift in Sources */,
 				2AEE2C5F48AC9038181AC4DC /* CometIntelligenceTests.swift in Sources */,
 				B3FDEA88ABFA35981BCCCAA1 /* CredentialTests.swift in Sources */,
+				E0849E988DFB7C84620FCAC7 /* CSecurityTests.swift in Sources */,
 				DF9D6F678F16C16C06193F4A /* DownloadNameTests.swift in Sources */,
 				D1B6CC9ED73FC70F269CF8BC /* DownloadsFeatureTests.swift in Sources */,
 				D55DEDD6FF7FDC00B6508325 /* EaselsTests.swift in Sources */,

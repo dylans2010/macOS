@@ -359,8 +359,24 @@ final class WindowController: NSWindowController, NSWindowDelegate {
 
   @objc func fillPassword(_ sender: Any?) {
     guard let tab = store.spaces.selected.selectedTab, let id = store.spaces.selected.selectedTabID else { return }
-    SystemPasswordFill.shared.start(tab: id, url: tab.url) { message in
-      self.store.send(.showToast(message))
+    // Security first: if it holds logins for this origin, the picker
+    // (authenticated, origin re-checked at fill time) handles it. If it
+    // holds none, fall back to the macOS provider path, which is the
+    // previous behaviour — a cancelled Security picker does NOT fall
+    // through to a second, unexpected system sheet.
+    Task {
+      switch await CSecurityAutofillFlow.fill(tab: id, url: tab.url) {
+      case .filled(let username):
+        self.store.send(.showToast("Filled the login for \(username). The form was not submitted."))
+      case .noSecurityMatches:
+        SystemPasswordFill.shared.start(tab: id, url: tab.url) { message in
+          self.store.send(.showToast(message))
+        }
+      case .cancelled:
+        self.store.send(.showToast("Canceled."))
+      case .failed(let message):
+        self.store.send(.showToast(message))
+      }
     }
   }
 

@@ -44,12 +44,11 @@ func makeSettingsWindow(
         openPage(url, profile)
       }))
     case .passwords:
-      ("Passwords and Autofill", symbol("key"), AnyView(PasswordsPane { url in
-        let profile = store.withState {
-          $0.windows.last { !$0.isIncognito }?.spaces.selected.profileID ?? $0.profiles.ids.first ?? UUID()
-        }
-        openPage(url, profile)
-      }))
+      // Security replaces the old PasswordsPane. The pane's "Other
+      // providers" section still links out to the macOS provider,
+      // Google, and passkey pages; those external stores are not
+      // Security and are labelled as such inside the pane.
+      ("Passwords and Autofill", symbol("key"), AnyView(CSecurityServiceUI()))
     }
   }
   for (label, image, pane) in panes {
