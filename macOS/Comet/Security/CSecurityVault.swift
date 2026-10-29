@@ -220,7 +220,7 @@ enum CSecurityVault {
     /// Purges the in-memory key and credentials. The encrypted file and
     /// the Keychain key are untouched, so `load()` can reopen the vault
     /// afterwards. This is what the UI's Lock button does.
-    func lock() {
+    func lockVault() {
       locked {
         _key = nil
         _credentials = []

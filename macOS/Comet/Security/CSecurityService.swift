@@ -157,7 +157,7 @@ final class CSecurityService {
   /// (see `isAuthenticated`), while the Lock button purges everything.
   func lock() {
     session = AuthSession(authenticatedAt: nil, timeout: lockTimeout)
-    vault.lock()
+    vault.lockVault()
     isVaultReady = false
   }
 
@@ -351,11 +351,10 @@ final class CSecurityService {
   /// If a matching credential exists, nothing is overwritten silently.
   func saveGenerated(_ credential: CSecurityCredential) throws -> GeneratedSave {
     guard isVaultReady else { throw ServiceError.vaultNotReady }
-    let all = try vault.credentials()
+    var all = try vault.credentials()
     if let existing = all.first(where: { $0.origin == credential.origin && $0.username == credential.username }) {
       return .needsChoice(existing: existing.metadata, generated: credential)
     }
-    var all = all
     all.append(credential)
     try persist(all)
     return .saved(credential)

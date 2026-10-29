@@ -406,8 +406,9 @@ private struct CredentialEditor: View {
       case .needsChoice(let existing, let generated):
         generatedChoice = (existing, generated)
       }
-    } catch {
+    } catch let saveError {
       error = "The generated password could not be saved to Security. It is shown above so you can copy it, but it is not saved yet."
+      _ = saveError
     }
   }
 
@@ -419,9 +420,10 @@ private struct CredentialEditor: View {
       generatedSaved = true
       generatedChoice = nil
       error = nil
-    } catch {
+    } catch let resolveError {
       generatedChoice = nil
       error = "Could not save the generated password."
+      _ = resolveError
     }
   }
 
