@@ -1,4 +1,4 @@
-name: Sailfish
+name: Comet
 options:
   bundleIdPrefix: com.harunkkhan
   deploymentTarget:
@@ -17,14 +17,14 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
-  Sailfish:
+  Comet:
     type: application
     platform: macOS
     sources:
-      - path: Sailfish
+      - path: Comet
         excludes: [Resources/Reader]
       # Mozilla's Readability and its license.
-      - path: Sailfish/Resources/Reader
+      - path: Comet/Resources/Reader
         buildPhase: resources
       # uBlock Origin, from scripts/fetch-ublock.sh.
       - path: Extensions/uBlock0.chromium
@@ -41,23 +41,23 @@ targets:
       base:
         # The ids and the data folder keep the first name, Browser, so installs keep their state, defaults and grants.
         PRODUCT_BUNDLE_IDENTIFIER: com.harunkkhan.browser
-        PRODUCT_NAME: Sailfish
-        INFOPLIST_FILE: Sailfish/Info.plist
+        PRODUCT_NAME: Comet
+        INFOPLIST_FILE: Comet/Info.plist
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        APP_NAME: Sailfish
+        APP_NAME: Comet
         DATA_FOLDER: Browser
       # Dev and test runs keep their own defaults and Application Support folder.
       configs:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.harunkkhan.browser.debug
           DATA_FOLDER: Browser Debug
-          # Tells the Debug app apart from Sailfish in the default browser list.
-          APP_NAME: Sailfish Dev
+          # Tells the Debug app apart from Comet in the default browser list.
+          APP_NAME: Comet Dev
   # The Dock tile plug-in: shows the icon chosen in Settings while the app is not running.
   DockTile:
     type: bundle
     platform: macOS
-    sources: [DockTile, Sailfish/Settings/AppIcon.swift]
+    sources: [DockTile, Comet/Settings/AppIcon.swift]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.harunkkhan.browser.docktile
@@ -65,21 +65,21 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSPrincipalClass: DockTilePlugIn
         SWIFT_VERSION: "5.0"
-  SailfishTests:
+  CometTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - SailfishTests
+      - CometTests
     dependencies:
-      - target: Sailfish
+      - target: Comet
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
         FRAMEWORK_SEARCH_PATHS: $(PROJECT_DIR)/Frameworks
 schemes:
-  Sailfish:
+  Comet:
     build:
       targets:
-        Sailfish: all
+        Comet: all
     test:
-      targets: [SailfishTests]
+      targets: [CometTests]

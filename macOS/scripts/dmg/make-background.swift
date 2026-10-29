@@ -26,7 +26,7 @@ func draw() {
   let regular: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 22), .foregroundColor: color(0x6E6E73)]
   let bold: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 22, weight: .semibold), .foregroundColor: color(0x1D1D1F)]
   let line = NSMutableAttributedString()
-  for (text, attributes) in [("To install, drag ", regular), ("Sailfish", bold), (" to ", regular), ("Applications", bold)] {
+  for (text, attributes) in [("To install, drag ", regular), ("Comet", bold), (" to ", regular), ("Applications", bold)] {
     line.append(NSAttributedString(string: text, attributes: attributes))
   }
   let bounds = line.size()

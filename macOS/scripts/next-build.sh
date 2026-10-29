@@ -1,8 +1,8 @@
 #!/bin/sh
 # Prints the next build number (CFBundleVersion, which Sparkle compares): one more than the newest v* release's
-# on github.com/SailfishBrowser/macOS, prereleases included, and above 2762, the last test build. Needs gh.
+# on github.com/dylans2010/macOS, prereleases included, and above 2762, the last test build. Needs gh.
 set -eu
-REPO=SailfishBrowser/macOS
+REPO=dylans2010/macOS
 TAG="$(gh release list -R "$REPO" --exclude-drafts --limit 100 --json tagName \
   --jq '[.[].tagName | select(startswith("v"))][0] // ""')"
 LAST=2762

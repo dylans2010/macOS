@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds Release, signs Sailfish.app inside-out and packs it into build/Sailfish.dmg.
+# Builds Release, signs Comet.app inside-out and packs it into build/Comet.dmg.
 # Usage: [VERSION=<x.y.z[.n]>] [BUILD=<n>] package.sh
 #   VERSION and BUILD set CFBundleShortVersionString and CFBundleVersion, which Sparkle compares; release.sh passes them.
 #   Settings come from the environment, or from scripts/.env.local (gitignored), which is sourced when present:
@@ -21,10 +21,10 @@ set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -f "$ROOT/scripts/.env.local" ]; then . "$ROOT/scripts/.env.local"; fi
 OUT="$ROOT/build"
-APP="$OUT/DerivedData/Build/Products/Release/Sailfish.app"
+APP="$OUT/DerivedData/Build/Products/Release/Comet.app"
 ENGINE="$APP/Contents/Frameworks/EngineCore.framework"
 ENT="$ROOT/scripts/entitlements"
-DMG="$OUT/Sailfish.dmg"
+DMG="$OUT/Comet.dmg"
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 NOTARY_KEYCHAIN="${NOTARY_KEYCHAIN:-}"
@@ -34,7 +34,7 @@ IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning | sed -n '
 
 cd "$ROOT"
 xcodegen -q
-xcodebuild -project Sailfish.xcodeproj -scheme Sailfish -configuration Release \
+xcodebuild -project Comet.xcodeproj -scheme Comet -configuration Release \
   -derivedDataPath "$OUT/DerivedData" -clonedSourcePackagesDirPath "$OUT/SourcePackages" -destination generic/platform=macOS -skipMacroValidation -quiet build \
   ${VERSION:+MARKETING_VERSION=$VERSION} ${BUILD:+CURRENT_PROJECT_VERSION=$BUILD}
 
@@ -91,7 +91,7 @@ fi
 
 # dmgbuild writes the install window's layout (scripts/dmg/dmg.json) into the DMG's .DS_Store, without Finder.
 rm -f "$DMG"
-dmgbuild -s scripts/dmg/dmg.json Sailfish "$DMG" >/dev/null
+dmgbuild -s scripts/dmg/dmg.json Comet "$DMG" >/dev/null
 
 if [ -z "$IDENTITY" ]; then
   echo "Signed ad-hoc (no Developer ID Application identity); not notarized: $DMG"

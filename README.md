@@ -1,33 +1,33 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="brand/sailfish-logo-outline.svg">
-    <source media="(prefers-color-scheme: light)" srcset="brand/sailfish-logo.svg">
-    <img src="brand/sailfish-logo.svg" alt="Sailfish" width="140">
+    <source media="(prefers-color-scheme: dark)" srcset="brand/comet-logo-outline.svg">
+    <source media="(prefers-color-scheme: light)" srcset="brand/comet-logo.svg">
+    <img src="brand/comet-logo.svg" alt="Comet" width="140">
   </picture>
 </p>
 
-<h1 align="center">Sailfish</h1>
+<h1 align="center">Comet</h1>
 
 <p align="center"><b>The Open-Source Alternative to Arc.</b></p>
 
 <p align="center">
-  Sailfish is a calm, fast browser, designed to give you the same feel as if you were using Arc. Your tabs live in a
+  Comet is a calm, fast browser, designed to give you the same feel as if you were using Arc. Your tabs live in a
   sidebar, your work in spaces, and the web stays out of your way.
 </p>
 
 <p align="center">
-  <a href="https://github.com/SailfishBrowser/macOS/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/SailfishBrowser/macOS/test.yml?branch=main&label=tests&style=flat" alt="Tests"></a>
-  <a href="https://github.com/SailfishBrowser/macOS/releases/latest"><img src="https://img.shields.io/github/v/release/SailfishBrowser/macOS?label=release&style=flat" alt="Latest release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/SailfishBrowser/macOS?style=flat" alt="License"></a>
+  <a href="https://github.com/dylans2010/macOS/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/dylans2010/macOS/test.yml?branch=main&label=tests&style=flat" alt="Tests"></a>
+  <a href="https://github.com/dylans2010/macOS/releases/latest"><img src="https://img.shields.io/github/v/release/dylans2010/macOS?label=release&style=flat" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/dylans2010/macOS?style=flat" alt="License"></a>
   <a href="#requirements"><img src="https://img.shields.io/badge/macOS-15%2B%20%C2%B7%20Apple%20silicon-blue?style=flat" alt="macOS 15+ on Apple silicon"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/SailfishBrowser/macOS/releases/latest/download/Sailfish.dmg">Download</a> ·
-  <a href="https://sail.fish">Website</a> ·
-  <a href="https://sail.fish/guide">Guide</a> ·
-  <a href="https://sail.fish/compare">Compare</a> ·
-  <a href="https://github.com/SailfishBrowser/macOS/releases">Changelog</a> ·
+  <a href="https://github.com/dylans2010/macOS/releases/latest/download/Comet.dmg">Download</a> ·
+  <a href="https://comet.fish">Website</a> ·
+  <a href="https://comet.fish/guide">Guide</a> ·
+  <a href="https://comet.fish/compare">Compare</a> ·
+  <a href="https://github.com/dylans2010/macOS/releases">Changelog</a> ·
   <a href="#contributing">Contributing</a>
 </p>
 
@@ -35,7 +35,7 @@
 
 - A sidebar of pinned and today tabs, folders and tab groups, organized into spaces with their own colors
 - A command bar for search, tabs and commands
-- Little Sailfish, a small window for links opened from other apps, and Peek for links from pinned sites
+- Little Comet, a small window for links opened from other apps, and Peek for links from pinned sites
 - Split view, Reader view, find in page, downloads, archived tabs and history
 - uBlock Origin built in, and Chrome extensions from the Chrome Web Store
 - Import from Arc, Chrome, Edge, Dia and Safari, read on your Mac with nothing uploaded
@@ -48,9 +48,9 @@
 
 ## Download
 
-[Sailfish.dmg](https://github.com/SailfishBrowser/macOS/releases/latest/download/Sailfish.dmg) is always the latest
-release, and Sailfish keeps itself up to date from there. Every release and its notes are on
-[Releases](https://github.com/SailfishBrowser/macOS/releases).
+[Comet.dmg](https://github.com/dylans2010/macOS/releases/latest/download/Comet.dmg) is always the latest
+release, and Comet keeps itself up to date from there. Every release and its notes are on
+[Releases](https://github.com/dylans2010/macOS/releases).
 
 ## Building
 
@@ -61,13 +61,13 @@ cd macOS
 sh scripts/fetch-engine.sh   # the prebuilt EngineCore.framework, checked against engine/ENGINE_SHA256
 sh scripts/fetch-ublock.sh   # uBlock Origin, checked against its release digest
 xcodegen generate
-open Sailfish.xcodeproj
+open Comet.xcodeproj
 ```
 
-Run the `Sailfish` scheme. To run the tests from the command line:
+Run the `Comet` scheme. To run the tests from the command line:
 
 ```sh
-xcodebuild -project Sailfish.xcodeproj -scheme Sailfish -destination platform=macOS \
+xcodebuild -project Comet.xcodeproj -scheme Comet -destination platform=macOS \
   -skipMacroValidation -skipPackagePluginValidation test
 ```
 
@@ -92,7 +92,7 @@ checksum for `engine/ENGINE_SHA256`.
 Releases are built by the [Release workflow](.github/workflows/release.yml), started by hand with a version (or by
 pushing a `v<version>` tag). It builds the app, signs it with a Developer ID, notarizes it, and publishes release
 `v<version>` with the DMG, Sparkle deltas from the previous release and `appcast.xml`, the update feed that
-`sail.fish/appcast.xml` redirects to. The build number is one more than the last release's. A run marked
+`comet.fish/appcast.xml` redirects to. The build number is one more than the last release's. A run marked
 prerelease publishes a prerelease, which neither the download link nor the update feed picks up.
 
 `macOS/scripts/release.sh` does the same on a Mac with the signing identity, notarization credentials and Sparkle
@@ -105,7 +105,7 @@ pull request; the [Test workflow](.github/workflows/test.yml) runs them on every
 
 ## License
 
-Sailfish is licensed under the [Apache License 2.0](LICENSE). It includes third-party software under its own
+Comet is licensed under the [Apache License 2.0](LICENSE). It includes third-party software under its own
 licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 <p align="center">Created by <a href="https://harunkhan.org">Harun</a> and <a href="https://tso.dev">Joseph</a></p>

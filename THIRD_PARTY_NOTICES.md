@@ -1,6 +1,6 @@
 # Third-party notices
 
-Sailfish is licensed under the Apache License 2.0 ([LICENSE](LICENSE)). It includes or downloads the software
+Comet is licensed under the Apache License 2.0 ([LICENSE](LICENSE)). It includes or downloads the software
 below, each under its own license.
 
 ## Chromium
@@ -16,13 +16,13 @@ and are under its license.
 The app bundles uBlock Origin 1.75.0, downloaded by `macOS/scripts/fetch-ublock.sh` from its official release.
 Copyright Raymond Hill and contributors. GNU General Public License v3.0. It is a separate program, distributed
 unchanged except for an added manifest `key`; its license is `LICENSE.txt` in
-`Sailfish.app/Contents/Resources/uBlock0.chromium`. Source: https://github.com/gorhill/uBlock/tree/1.75.0
+`Comet.app/Contents/Resources/uBlock0.chromium`. Source: https://github.com/gorhill/uBlock/tree/1.75.0
 
 ## Readability
 
-`macOS/Sailfish/Resources/Reader` contains Readability 0.6.0 by Mozilla, https://github.com/mozilla/readability.
+`macOS/Comet/Resources/Reader` contains Readability 0.6.0 by Mozilla, https://github.com/mozilla/readability.
 Copyright (c) 2010 Arc90 Inc. Apache License 2.0 (`Readability-0.6.0-LICENSE.md` beside it). The test fixtures
-in `macOS/SailfishTests/Fixtures/Reader` include a page from its test suite.
+in `macOS/CometTests/Fixtures/Reader` include a page from its test suite.
 
 ## Sparkle
 

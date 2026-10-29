@@ -368,7 +368,7 @@ Run from the laptop against a remote Mac build host (set `ENGINE_HOST`, e.g.
   `engine/out/` (gitignored).
 - `scripts/package-engine.sh`: on the build Mac, zip `EngineCore.framework`
   as `EngineCore-<version>-arm64.zip` and print its SHA-256. The zip is the
-  asset of release `engine-<version>` on github.com/SailfishBrowser/macOS and
-  the checksum goes in `ENGINE_SHA256`; `macOS/scripts/fetch-engine.sh`
-  downloads and checks it (or, with `ENGINE_HOST` set, copies the build
-  host's framework).
+  asset of release `engine-<version>` on github.com/SailfishBrowser/macOS,
+  the upstream engine host, and the checksum goes in `ENGINE_SHA256`;
+  `macOS/scripts/fetch-engine.sh` downloads and checks it (or, with
+  `ENGINE_HOST` set, copies the build host's framework).

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Puts EngineCore.framework in macOS/Frameworks: the prebuilt one for engine/CHROMIUM_VERSION, from the
-# engine-<version> release of github.com/SailfishBrowser/macOS, checked against engine/ENGINE_SHA256.
+# engine-<version> release of github.com/SailfishBrowser/macOS (the upstream engine host until this
+# project publishes its own), checked against engine/ENGINE_SHA256. Override with ENGINE_REPO=owner/repo.
 # With ENGINE_HOST set (user@host), copies the one built on that Mac (engine/scripts/build.sh) instead.
 # With ENGINE_CACHE set to a directory, the zip is kept there and downloaded only when missing or not matching.
 set -eu
@@ -13,13 +14,14 @@ if [ -n "${ENGINE_HOST:-}" ]; then
   exit 0
 fi
 
+REPO="${ENGINE_REPO:-SailfishBrowser/macOS}"
 VERSION="$(cat "$ROOT/engine/CHROMIUM_VERSION")"
 NAME="EngineCore-$VERSION-arm64.zip"
 DIR="${ENGINE_CACHE:-$(mktemp -d)}"
 mkdir -p "$DIR"
 SUM="$(cat "$ROOT/engine/ENGINE_SHA256")  $DIR/$NAME"
 if ! echo "$SUM" | shasum -a 256 -c -s - 2>/dev/null; then
-  curl -fsSL --retry 3 -o "$DIR/$NAME" "https://github.com/SailfishBrowser/macOS/releases/download/engine-$VERSION/$NAME"
+  curl -fsSL --retry 3 -o "$DIR/$NAME" "https://github.com/$REPO/releases/download/engine-$VERSION/$NAME"
   echo "$SUM" | shasum -a 256 -c -
 fi
 rm -rf "$OUT/EngineCore.framework"

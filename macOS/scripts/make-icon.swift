@@ -1,4 +1,4 @@
-// Renders the app icon into Sailfish/Assets.xcassets/AppIcon.appiconset from brand/sailfish-icon-1024.png, the
+// Renders the app icon into Comet/Assets.xcassets/AppIcon.appiconset from brand/comet-icon-1024.png, the
 // master the iOS icon uses. The master is a full-bleed square (iOS masks it); macOS does not mask app icons, so
 // each size places it on the macOS icon grid's rounded tile: 824 x 824 inset 100 on the 1024 canvas, corner
 // radius 185. Every size is a Lanczos downscale of the master onto a tile snapped to whole pixels, so the tile's
@@ -8,8 +8,8 @@ import AppKit
 import CoreImage.CIFilterBuiltins
 
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../..")
-let master = CIImage(contentsOf: root.appendingPathComponent("brand/sailfish-icon-1024.png"))!
-let dir = root.appendingPathComponent("macOS/Sailfish/Assets.xcassets/AppIcon.appiconset")
+let master = CIImage(contentsOf: root.appendingPathComponent("brand/comet-icon-1024.png"))!
+let dir = root.appendingPathComponent("macOS/Comet/Assets.xcassets/AppIcon.appiconset")
 let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
 let ci = CIContext(options: [.workingColorSpace: sRGB])
 

@@ -1,5 +1,5 @@
-# Builds, signs, notarizes and publishes Sailfish as release v<version> of this repository, with Sparkle
-# deltas and the appcast that sail.fish/appcast.xml redirects to (releases/latest/download/appcast.xml).
+# Builds, signs, notarizes and publishes Comet as release v<version> of this repository, with Sparkle
+# deltas and the appcast that comet.fish/appcast.xml redirects to (releases/latest/download/appcast.xml).
 # A prerelease is for dry runs: releases/latest, and so the site's download and the update feed, skip it.
 name: Release
 
@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   release:
-    if: github.repository == 'SailfishBrowser/macOS'
+    if: github.repository == 'dylans2010/macOS'
     runs-on: macos-26
     environment: release
     timeout-minutes: 120
@@ -115,8 +115,8 @@ jobs:
           DEVELOPER_ID_PROVISIONING_PROFILE: ${{ secrets.DEVELOPER_ID_PROVISIONING_PROFILE }}
         run: |
           if [ -n "$DEVELOPER_ID_PROVISIONING_PROFILE" ]; then
-            echo "$DEVELOPER_ID_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/sailfish.provisionprofile"
-            echo "PROVISIONING_PROFILE=$RUNNER_TEMP/sailfish.provisionprofile" >> "$GITHUB_ENV"
+            echo "$DEVELOPER_ID_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/comet.provisionprofile"
+            echo "PROVISIONING_PROFILE=$RUNNER_TEMP/comet.provisionprofile" >> "$GITHUB_ENV"
           fi
 
       - name: Build, sign and notarize
@@ -137,7 +137,7 @@ jobs:
           fi
           sh scripts/package.sh
           rm -f "$RUNNER_TEMP/notary.p8"
-          xcrun stapler validate build/Sailfish.dmg
+          xcrun stapler validate build/Comet.dmg
 
       - name: Publish
         working-directory: macOS
@@ -146,7 +146,7 @@ jobs:
         run: |
           export SPARKLE_KEY_FILE="$RUNNER_TEMP/sparkle.key"
           printf '%s' "$SPARKLE_PRIVATE_KEY" > "$SPARKLE_KEY_FILE"
-          sh scripts/publish.sh "$VERSION" "$BUILD" build/Sailfish.dmg "$GITHUB_SHA"
+          sh scripts/publish.sh "$VERSION" "$BUILD" build/Comet.dmg "$GITHUB_SHA"
           rm "$SPARKLE_KEY_FILE"
 
       - name: Clean up

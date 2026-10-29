@@ -8,7 +8,7 @@ on:
 
 jobs:
   register:
-    if: github.repository == 'SailfishBrowser/macOS'
+    if: github.repository == 'dylans2010/macOS'
     runs-on: macos-26
     environment: release
     timeout-minutes: 10
@@ -28,4 +28,4 @@ jobs:
       - name: Register the App ID
         run: |
           BUNDLE_ID="$(awk '/PRODUCT_BUNDLE_IDENTIFIER:/ { print $2; exit }' macOS/project.yml)"
-          swift macOS/scripts/register-app-id.swift "$BUNDLE_ID" Sailfish
+          swift macOS/scripts/register-app-id.swift "$BUNDLE_ID" Comet

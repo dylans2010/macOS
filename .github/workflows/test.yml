@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   test:
-    if: github.repository == 'SailfishBrowser/macOS'
+    if: github.repository == 'dylans2010/macOS'
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -58,6 +58,6 @@ jobs:
         working-directory: macOS
         run: |
           xcodegen generate
-          xcodebuild -project Sailfish.xcodeproj -scheme Sailfish -destination platform=macOS \
+          xcodebuild -project Comet.xcodeproj -scheme Comet -destination platform=macOS \
             -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath build/SourcePackages \
             -skipMacroValidation -skipPackagePluginValidation -quiet test

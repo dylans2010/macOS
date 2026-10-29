@@ -2,7 +2,7 @@
 # Puts uBlock Origin, unpacked, in macOS/Extensions/uBlock0.chromium for the app bundle: the official
 # Chromium build of the release below (https://github.com/gorhill/uBlock/releases), checked against its
 # SHA-256. The engine loads it as a component extension, whose ID comes from the manifest's "key", so this
-# adds one: the public half of a key made for Sailfish, giving ID hlmfmdnmdkgbnjgefkahmafaefinjolo.
+# adds one: the public half of a key made for Comet, giving ID hlmfmdnmdkgbnjgefkahmafaefinjolo.
 # To update, change VERSION and SHA256 (the release asset's digest).
 set -eu
 VERSION=1.75.0

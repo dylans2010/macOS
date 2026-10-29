@@ -1,7 +1,7 @@
 #!/bin/sh
-# Releases Sailfish from this Mac, the fallback for .github/workflows/release.yml: builds, signs and notarizes a
+# Releases Comet from this Mac, the fallback for .github/workflows/release.yml: builds, signs and notarizes a
 # commit with the published engine, then publishes it with publish.sh as release v<version> of
-# github.com/SailfishBrowser/macOS.
+# github.com/dylans2010/macOS.
 # Usage: release.sh <version> [<commit>]
 #   Needs gh signed in, Sparkle's generate_appcast on PATH with its EdDSA key in the login keychain, a Developer ID
 #   Application identity and notarytool credentials.
@@ -22,7 +22,7 @@ gh auth status >/dev/null 2>&1 || fail "gh is missing or not signed in"
 security find-generic-password -s https://sparkle-project.org -a ed25519 >/dev/null 2>&1 ||
   fail "no Sparkle EdDSA key in the login keychain"
 [ -n "${NOTARY_PROFILE:-}${NOTARY_KEY:-}${NOTARY_APPLE_ID:-}" ] || fail "no notarytool credentials (see package.sh)"
-! gh release view "v$VERSION" -R SailfishBrowser/macOS >/dev/null 2>&1 || fail "release v$VERSION exists"
+! gh release view "v$VERSION" -R dylans2010/macOS >/dev/null 2>&1 || fail "release v$VERSION exists"
 BUILD="$(sh "$SCRIPTS/next-build.sh")"
 
 WORK="$(mktemp -d)"
@@ -33,5 +33,5 @@ cd "$WORK/macOS"
 sh scripts/fetch-engine.sh
 sh scripts/fetch-ublock.sh
 ${SIGN_WRAPPER:-} env PATH="$PATH" VERSION="$VERSION" BUILD="$BUILD" sh scripts/package.sh
-xcrun stapler validate build/Sailfish.dmg || fail "the DMG is not notarized"
-sh scripts/publish.sh "$VERSION" "$BUILD" build/Sailfish.dmg "$SHA"
+xcrun stapler validate build/Comet.dmg || fail "the DMG is not notarized"
+sh scripts/publish.sh "$VERSION" "$BUILD" build/Comet.dmg "$SHA"
