@@ -12,6 +12,14 @@ final class CredentialTests: XCTestCase {
     XCTAssertTrue(CredentialPage.sameOrigin(URL(string: "https://example.com/a")!, URL(string: "https://example.com/other")!))
   }
 
+  func testOriginIncludesNonDefaultPorts() {
+    XCTAssertEqual(CredentialPage.origin(URL(string: "https://example.com:8443/login")!), "https://example.com:8443")
+    XCTAssertFalse(CredentialPage.sameOrigin(URL(string: "https://example.com/login")!, URL(string: "https://example.com:8443/login")!))
+    XCTAssertTrue(CredentialPage.sameOrigin(URL(string: "https://example.com:443/login")!, URL(string: "https://example.com/login")!))
+    XCTAssertEqual(CredentialPage.origin(URL(string: "http://example.com:8080/")!), "http://example.com:8080")
+    XCTAssertEqual(CredentialPage.origin(URL(string: "https://EXAMPLE.com/")!), "https://example.com")
+  }
+
   func testPasswordScriptDoesNotSubmitOrBreakOutOfJSON() {
     let script = PasswordFillScript.source(username: "a\"};alert(1);//", password: "p")
     XCTAssertTrue(script.contains("const username = \""))
@@ -67,7 +75,11 @@ final class CredentialTests: XCTestCase {
     XCTAssertTrue(PasswordFillScript.source(username: "a", password: "b", moveFocus: false).contains("field.value"))
     XCTAssertFalse(PasswordFillScript.source(username: "a", password: "b", moveFocus: false).contains("field.focus"))
     XCTAssertEqual(PasswordFieldProbe.isLoginField(tag: "INPUT", type: "password", autocomplete: "", formHasPassword: true), "password")
-    XCTAssertEqual(PasswordFieldProbe.isLoginField(tag: "INPUT", type: "text", autocomplete: "username", formHasPassword: false), "")
+    // A username step has no password field yet, so autocomplete="username"
+    // qualifies on its own. A bare email field without a password does not,
+    // so newsletter and search forms are not treated as login forms.
+    XCTAssertEqual(PasswordFieldProbe.isLoginField(tag: "INPUT", type: "text", autocomplete: "username", formHasPassword: false), "username")
+    XCTAssertEqual(PasswordFieldProbe.isLoginField(tag: "INPUT", type: "email", autocomplete: "email", formHasPassword: false), "")
     XCTAssertFalse(PasswordFieldProbe.script.contains(".submit"))
     XCTAssertFalse(PasswordFieldProbe.script.contains(".value"))
     let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "Fixtures/login.html")
@@ -75,6 +87,64 @@ final class CredentialTests: XCTestCase {
     XCTAssertTrue(html.contains("autocomplete=\"username\""))
     XCTAssertTrue(html.contains("type=\"password\""))
     XCTAssertTrue(html.contains("autocomplete=\"current-password\""))
+  }
+
+  func testProbeScriptHandlesUsernameOnlyStepAndSameOriginFrame() {
+    // Username-only step: no password field anywhere, only autocomplete="username".
+    let stepContext = JSContext()!
+    stepContext.evaluateScript(
+      """
+      var user = { tagName: "INPUT", getAttribute: function(n) { if (n === "type") return "text"; if (n === "autocomplete") return "username"; return ""; }, form: null, getBoundingClientRect: function() { return {x: 5, y: 20, width: 180, height: 28}; } };
+      var document = {
+        documentElement: { dataset: {} },
+        addEventListener: function() {},
+        querySelector: function(sel) {
+          if (String(sel).indexOf(":focus") !== -1) return user;
+          if (String(sel).indexOf("password") !== -1) return null;
+          if (String(sel).indexOf('autocomplete="username"') !== -1) return user;
+          return null;
+        },
+        querySelectorAll: function() { return []; }
+      };
+      """)
+    XCTAssertEqual(stepContext.evaluateScript(PasswordFieldProbe.script)?.toString(), "username@5,20,180,28|")
+
+    // Same-origin frame: the password field lives in the frame, and its rect
+    // is reported offset by the frame's position on the page.
+    let frameContext = JSContext()!
+    frameContext.evaluateScript(
+      """
+      var frameDoc = {
+        querySelector: function(sel) {
+          if (String(sel).indexOf("password") !== -1) return { getBoundingClientRect: function() { return {x: 20, y: 30, width: 200, height: 30}; } };
+          return null;
+        }
+      };
+      var frame = { contentDocument: frameDoc, getBoundingClientRect: function() { return {x: 100, y: 200, width: 400, height: 300}; } };
+      var document = {
+        documentElement: { dataset: {} },
+        addEventListener: function() {},
+        querySelector: function(sel) {
+          if (String(sel).indexOf(":focus") !== -1) return null;
+          return null;
+        },
+        querySelectorAll: function(sel) { return [frame]; }
+      };
+      """)
+    XCTAssertEqual(frameContext.evaluateScript(PasswordFieldProbe.script)?.toString(), "present@|120,230,200,30")
+    XCTAssertTrue(PasswordFieldProbe.script.contains("contentDocument"))
+    XCTAssertFalse(PasswordFieldProbe.script.contains(".value"))
+  }
+
+  func testUsernameOnlyGeometryAndFillScriptDoNotSubmit() {
+    let target = PasswordFieldGeometry.parse("username@8,20,220,28|")
+    XCTAssertEqual(target?.kind, "username")
+    XCTAssertEqual(target?.username, CGRect(x: 8, y: 20, width: 220, height: 28))
+    XCTAssertNil(target?.password)
+    let script = PasswordFillScript.source(username: "a", password: "")
+    XCTAssertFalse(script.contains(".submit"))
+    XCTAssertFalse(script.contains("requestSubmit"))
+    XCTAssertTrue(script.contains("no-password-field"))
   }
 
   func testGooglePasswordManagerIsNotReportedAsConnected() {
@@ -88,6 +158,14 @@ final class CredentialTests: XCTestCase {
     XCTAssertTrue(PasswordAutofillPolicy.importSteps.joined(separator: " ").contains("will not open another app"))
     XCTAssertFalse(PasswordAutofillPolicy.importSteps.joined(separator: " ").contains("password123"))
     XCTAssertTrue(PasswordAutofillPolicy.storage.contains("not submitted"))
+    // The macOS copy is a separate step from the Google import, and it must
+    // never be described as a sync.
+    let macOSSteps = PasswordAutofillPolicy.macOSImportSteps.joined(separator: " ")
+    XCTAssertTrue(macOSSteps.contains("Passwords app"))
+    XCTAssertTrue(macOSSteps.contains("Import Passwords from File"))
+    XCTAssertTrue(macOSSteps.contains("AutoFill & Passwords"))
+    XCTAssertTrue(PasswordAutofillPolicy.macOSImportNote.contains("not a sync"))
+    XCTAssertFalse(PasswordAutofillPolicy.macOSImportNote.contains("syncs"))
   }
 
   func testPrivateWindowsAndOtherOriginsCannotBeFilled() {

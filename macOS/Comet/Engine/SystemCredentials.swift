@@ -4,10 +4,18 @@ import Foundation
 import Security
 
 enum CredentialPage {
+  // An origin includes a non-default port. Without it, https://example.com:8443
+  // would be treated as the same origin as https://example.com, and a credential
+  // for one could be offered on the other. An explicitly default port
+  // (https://example.com:443) normalises to the portless form.
   static func origin(_ url: URL) -> String? {
     guard let scheme = url.scheme?.lowercased(), ["https", "http"].contains(scheme),
       let host = url.host()?.lowercased(), !host.isEmpty, !host.contains(" ")
     else { return nil }
+    let defaultPort = scheme == "https" ? 443 : 80
+    if let port = url.port, port != defaultPort {
+      return "\(scheme)://\(host):\(port)"
+    }
     return "\(scheme)://\(host)"
   }
 
@@ -19,54 +27,94 @@ enum CredentialPage {
 
 enum PasswordFieldProbe {
   // Isolated-world read of the focused control. It never reads or writes values.
+  // It also never reads a cross-origin frame: accessing one throws or returns
+  // nothing, and that frame is skipped, so its fields are never reported.
+  // A username-only step is reported too: a field with autocomplete="username"
+  // qualifies on its own, because that step has no password field yet. A bare
+  // email field does not, so newsletter and search forms are not login forms.
   static let script = """
     (() => {
-      const classify = (el) => {
+      const classify = (el, doc) => {
         if (!el || !el.tagName || el.tagName !== "INPUT") return "";
         const type = (el.getAttribute("type") || "text").toLowerCase();
         const ac = (el.getAttribute("autocomplete") || "").toLowerCase();
-        const form = el.form;
-        const scope = form || document;
-        const hasPassword = !!scope.querySelector('input[type="password"]');
+        if (ac === "username") return "username";
+        const scope = el.form || doc || document;
+        const hasPassword = !!(scope.querySelector && scope.querySelector('input[type="password"]'));
         if (!hasPassword) return "";
         if (type === "password" || ac === "current-password" || ac === "new-password") return "password";
-        if (type === "email" || ac === "username" || ac === "email") return "username";
+        if (type === "email" || ac === "email") return "username";
         return "";
       };
       const root = document.documentElement;
-      if (root && root.dataset.cometPasswordListener !== "1") {
+      if (root && root.dataset && root.dataset.cometPasswordListener !== "1") {
         root.dataset.cometPasswordListener = "1";
         document.addEventListener("focusin", (event) => {
-          root.dataset.cometPasswordField = classify(event.target);
+          root.dataset.cometPasswordField = classify(event.target, document);
         }, true);
         document.addEventListener("focusout", () => {
           root.dataset.cometPasswordField = "";
         }, true);
       }
-      const rectOf = (el) => {
+      const rectOf = (el, dx, dy) => {
         if (!el || !el.getBoundingClientRect) return "";
         const r = el.getBoundingClientRect();
         if (!r || r.width < 2 || r.height < 2) return "";
-        return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)].join(",");
+        return [Math.round(r.x + dx), Math.round(r.y + dy), Math.round(r.width), Math.round(r.height)].join(",");
       };
-      const pass = document.querySelector('input[type="password"]');
-      if (!pass) return "";
-      const focused = document.querySelector("input:focus");
-      let kind = classify(focused);
-      if (!kind && root) kind = root.dataset.cometPasswordField || "";
+      const docs = [{doc: document, dx: 0, dy: 0}];
+      try {
+        const frames = (typeof document.querySelectorAll === "function") ? document.querySelectorAll("iframe") : [];
+        for (let i = 0; i < frames.length; i++) {
+          try {
+            const inner = frames[i].contentDocument;
+            if (!inner || !inner.querySelector) continue;
+            const fr = frames[i].getBoundingClientRect ? frames[i].getBoundingClientRect() : null;
+            docs.push({doc: inner, dx: fr ? fr.x : 0, dy: fr ? fr.y : 0});
+          } catch (e) {}
+        }
+      } catch (e) {}
+      const findIn = (entry, selector) => {
+        if (!entry.doc.querySelector) return null;
+        return entry.doc.querySelector(selector);
+      };
+      const focused = document.querySelector ? document.querySelector("input:focus") : null;
+      let pass = null, passDoc = null;
+      for (let i = 0; i < docs.length; i++) {
+        const found = findIn(docs[i], 'input[type="password"]');
+        if (found) { pass = found; passDoc = docs[i]; break; }
+      }
+      if (!pass) {
+        let stepUser = null, stepDoc = null;
+        for (let i = 0; i < docs.length; i++) {
+          const found = findIn(docs[i], 'input[autocomplete="username"]');
+          if (found) { stepUser = found; stepDoc = docs[i]; break; }
+        }
+        if (!stepUser) return "";
+        let kind = classify(focused, document);
+        if (!kind && root && root.dataset) kind = root.dataset.cometPasswordField || "";
+        if (kind !== "username") kind = "username";
+        return kind + "@" + rectOf(stepUser, stepDoc.dx, stepDoc.dy) + "|";
+      }
+      let kind = classify(focused, document);
+      if (!kind && root && root.dataset) kind = root.dataset.cometPasswordField || "";
       if (kind !== "password" && kind !== "username") kind = "present";
-      const scope = (focused && focused.form) || pass.form || document;
-      const user = scope.querySelector('input[autocomplete="username"], input[type="email"], input[name="username" i]');
-      return kind + "@" + rectOf(user) + "|" + rectOf(pass);
+      const scope = (focused && focused.form) || pass.form || passDoc.doc;
+      const user = scope.querySelector ? scope.querySelector('input[autocomplete="username"], input[type="email"], input[name="username" i]') : null;
+      return kind + "@" + rectOf(user, passDoc.dx, passDoc.dy) + "|" + rectOf(pass, passDoc.dx, passDoc.dy);
     })()
     """
 
+  // Swift mirror of the script's classification, for tests and callers that
+  // already have a field's attributes. A username step needs no password yet.
   static func isLoginField(tag: String, type: String, autocomplete: String, formHasPassword: Bool) -> String {
-    guard tag.uppercased() == "INPUT", formHasPassword else { return "" }
+    guard tag.uppercased() == "INPUT" else { return "" }
     let type = type.lowercased()
     let autocomplete = autocomplete.lowercased()
+    if autocomplete == "username" { return "username" }
+    guard formHasPassword else { return "" }
     if type == "password" || autocomplete == "current-password" || autocomplete == "new-password" { return "password" }
-    if type == "email" || autocomplete == "username" || autocomplete == "email" { return "username" }
+    if type == "email" || autocomplete == "email" { return "username" }
     return ""
   }
 }
@@ -95,6 +143,13 @@ enum PasswordFieldGeometry {
 }
 
 enum PasswordFillScript {
+  // Fills only the login fields of the page that was already verified to be
+  // the same origin as the credential request. It never submits the form.
+  // A username-only step has no password field, so it fills the username and
+  // still reports "filled" instead of dropping the credential. Same-origin
+  // frames are searched; a cross-origin frame throws or returns nothing and
+  // is skipped, so a credential is never written into a frame Comet cannot
+  // verify belongs to this page.
   static func source(username: String, password: String, moveFocus: Bool = true) -> String {
     let focusName = moveFocus ? "name.focus();\n        " : ""
     let focusField = moveFocus ? "field.focus();\n      " : ""
@@ -102,21 +157,51 @@ enum PasswordFillScript {
     (() => {
       const username = \(json(username));
       const password = \(json(password));
-      const field = document.querySelector('input[type="password"]');
-      if (!field) return "no-password-field";
-      const root = field.form || document;
-      const name = root.querySelector('input[autocomplete="username"], input[type="email"], input[name="username" i], input[type="text"]');
+      const docs = [document];
+      try {
+        const frames = (typeof document.querySelectorAll === "function") ? document.querySelectorAll("iframe") : [];
+        for (let i = 0; i < frames.length; i++) {
+          try {
+            const inner = frames[i].contentDocument;
+            if (inner && inner.querySelector) docs.push(inner);
+          } catch (e) {}
+        }
+      } catch (e) {}
+      const find = (selector) => {
+        for (let i = 0; i < docs.length; i++) {
+          const found = docs[i].querySelector ? docs[i].querySelector(selector) : null;
+          if (found) return {el: found, doc: docs[i]};
+        }
+        return null;
+      };
+      const passEntry = find('input[type="password"]');
+      const field = passEntry ? passEntry.el : null;
+      const strict = 'input[autocomplete="username"], input[type="email"], input[name="username" i]';
+      let nameEntry = null;
+      if (passEntry) {
+        const scope = passEntry.el.form || passEntry.doc;
+        nameEntry = scope.querySelector ? {el: scope.querySelector(strict), doc: passEntry.doc} : null;
+        if (!nameEntry || !nameEntry.el) nameEntry = find(strict);
+      } else {
+        nameEntry = find(strict);
+      }
+      let name = nameEntry ? nameEntry.el : null;
+      if (!name && passEntry) {
+        const scope = passEntry.el.form || passEntry.doc;
+        name = scope.querySelector ? scope.querySelector('input[type="text"]') : null;
+      }
       if (name && username) {
         \(focusName)name.value = username;
         name.dispatchEvent(new Event("input", {bubbles:true}));
         name.dispatchEvent(new Event("change", {bubbles:true}));
       }
-      if (password) {
+      if (field && password) {
         \(focusField)field.value = password;
         field.dispatchEvent(new Event("input", {bubbles:true}));
         field.dispatchEvent(new Event("change", {bubbles:true}));
       }
-      return password || username ? "filled" : "no-password-field";
+      if (!field && !name) return "no-password-field";
+      return (name && username) || (field && password) ? "filled" : "no-password-field";
     })()
     """
   }

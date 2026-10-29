@@ -42,6 +42,25 @@ enum PasswordAutofillPolicy {
     The login-field suggestions Comet shows are still the macOS ones.
     """
 
+  // The second half of the migration, and the part the Google-only guide
+  // leaves out: importing into Google does not make a password fill in
+  // Comet. This is a separate, explicit copy into the macOS provider, not
+  // a sync, and it is the only way a Google-saved password fills here.
+  static let macOSImportNote = """
+    Importing into Google Password Manager does not fill a login in Comet. \
+    To fill a Google-saved password here, copy it into the provider macOS uses. \
+    That copy is not a sync: later changes in Google will not appear in Comet, \
+    and logins saved through the macOS provider will not go to Google.
+    """
+
+  static let macOSImportSteps = [
+    "Export a CSV yourself from Google Password Manager, following Google’s help. Comet does not export it for you, and it never uploads the file anywhere.",
+    "On macOS Sequoia or later, open the Passwords app and choose File > Import Passwords from File, then choose the CSV. Menu wording varies by macOS version. Review the entries it could not import; imported passwords do not replace entries you already have.",
+    "In System Settings → General → AutoFill & Passwords, turn on AutoFill and choose the provider that now holds those passwords.",
+    "In Comet, focus a login field or use Test Autofill on this page, and choose the login. Canceling leaves the form unchanged, and nothing is submitted.",
+    "Delete the CSV after importing. The Passwords app offers to delete it when the import finishes; do not leave a copy in Downloads.",
+  ]
+
   static let privateWindow = "Private windows do not offer saved passwords."
   static let webOnly = "Passwords can only fill an http or https page."
   static let pageChanged = "The page changed, so the password was not filled."
@@ -128,6 +147,19 @@ struct PasswordsPane: View {
           .fixedSize(horizontal: false, vertical: true)
       }
       Button("Google’s Import Help") { openPage(PasswordAutofillPolicy.googleImportHelp) }
+      Text("Fill those passwords in Comet")
+        .font(.system(size: 13, weight: .semibold))
+        .padding(.top, 4)
+      Text(PasswordAutofillPolicy.macOSImportNote)
+        .font(.system(size: 12))
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      ForEach(Array(PasswordAutofillPolicy.macOSImportSteps.enumerated()), id: \.offset) { index, step in
+        Text("\(index + 1). \(step)")
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
     }
     .padding(12)
     .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
