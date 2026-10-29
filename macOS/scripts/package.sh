@@ -19,6 +19,7 @@
 #   ~/.dmgbuild/bin to PATH.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="$(cd "$ROOT/.." && pwd)"
 if [ -f "$ROOT/scripts/.env.local" ]; then . "$ROOT/scripts/.env.local"; fi
 OUT="$ROOT/build"
 APP="$OUT/DerivedData/Build/Products/Release/Comet.app"
@@ -32,11 +33,12 @@ NOTARY_KEY="${NOTARY_KEY:-}"
 NOTARY_APPLE_ID="${NOTARY_APPLE_ID:-}"
 IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -1)}"
 
-cd "$ROOT"
+cd "$REPO"
 xcodegen -q
 xcodebuild -project Comet.xcodeproj -scheme Comet -configuration Release \
   -derivedDataPath "$OUT/DerivedData" -clonedSourcePackagesDirPath "$OUT/SourcePackages" -destination generic/platform=macOS -skipMacroValidation -quiet build \
   ${VERSION:+MARKETING_VERSION=$VERSION} ${BUILD:+CURRENT_PROJECT_VERSION=$BUILD}
+cd "$ROOT"
 
 if [ -n "$IDENTITY" ]; then
   sign() { codesign --force --timestamp --sign "$IDENTITY" "$@"; }

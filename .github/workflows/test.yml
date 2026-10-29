@@ -29,7 +29,7 @@ jobs:
           path: |
             ~/Library/Caches/org.swift.swiftpm
             macOS/build/SourcePackages
-          key: swiftpm-${{ hashFiles('macOS/project.yml') }}
+          key: swiftpm-${{ hashFiles('project.yml') }}
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: macOS/build/DerivedData
-          key: deriveddata-test-xcode-26.5-${{ hashFiles('macOS/project.yml') }}
+          key: deriveddata-test-xcode-26.5-${{ hashFiles('project.yml') }}
 
       - name: Install XcodeGen
         run: |
@@ -55,9 +55,8 @@ jobs:
           sh scripts/fetch-ublock.sh
 
       - name: Test
-        working-directory: macOS
         run: |
           xcodegen generate
           xcodebuild -project Comet.xcodeproj -scheme Comet -destination platform=macOS \
-            -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath build/SourcePackages \
+            -derivedDataPath macOS/build/DerivedData -clonedSourcePackagesDirPath macOS/build/SourcePackages \
             -skipMacroValidation -skipPackagePluginValidation -quiet test

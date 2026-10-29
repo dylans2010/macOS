@@ -27,5 +27,5 @@ jobs:
 
       - name: Register the App ID
         run: |
-          BUNDLE_ID="$(awk '/PRODUCT_BUNDLE_IDENTIFIER:/ { print $2; exit }' macOS/project.yml)"
+          BUNDLE_ID="$(awk '/PRODUCT_BUNDLE_IDENTIFIER:/ { print $2; exit }' project.yml)"
           swift macOS/scripts/register-app-id.swift "$BUNDLE_ID" Comet

@@ -1,1 +1,4 @@
 .DS_Store
+build/
+Comet.xcodeproj/xcuserdata/
+Comet.xcodeproj/project.xcworkspace/xcuserdata/

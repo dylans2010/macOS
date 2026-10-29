@@ -57,9 +57,8 @@ release, and Comet keeps itself up to date from there. Every release and its not
 You need Xcode 26.5 or later and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ```sh
-cd macOS
-sh scripts/fetch-engine.sh   # the prebuilt EngineCore.framework, checked against engine/ENGINE_SHA256
-sh scripts/fetch-ublock.sh   # uBlock Origin, checked against its release digest
+sh macOS/scripts/fetch-engine.sh   # the prebuilt EngineCore.framework, checked against engine/ENGINE_SHA256
+sh macOS/scripts/fetch-ublock.sh   # uBlock Origin, checked against its release digest
 xcodegen generate
 open Comet.xcodeproj
 ```
